@@ -1,0 +1,6 @@
+# Alles nach public/ umleiten (für XAMPP bzw. Hoster ohne eigenen DocumentRoot)
+Options -Indexes
+RewriteEngine On
+RewriteRule ^(\.env|composer\.(json|lock))$ - [F,L]
+RewriteCond %{REQUEST_URI} !/public/
+RewriteRule ^(.*)$ public/$1 [L,QSA]

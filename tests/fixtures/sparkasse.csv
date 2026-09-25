@@ -1,0 +1,7 @@
+"Auftragskonto";"Buchungstag";"Valutadatum";"Buchungstext";"Verwendungszweck";"Glaeubiger ID";"Mandatsreferenz";"Kundenreferenz (End-to-End)";"Sammlerreferenz";"Lastschrift Ursprungsbetrag";"Auslagenersatz Ruecklastschrift";"Beguenstigter/Zahlungspflichtiger";"Kontonummer/IBAN";"BIC (SWIFT-Code)";"Betrag";"Waehrung";"Info"
+"DE12500105170648489890";"22.09.26";"22.09.26";"KARTENZAHLUNG";"2026-09-21T18:03 Debitk.1 VISA Debit";"";"";"";"";"";"";"REWE Markt GmbH";"DE00123456780000000000";"COBADEFFXXX";"-45,90";"EUR";"Umsatz gebucht"
+"DE12500105170648489890";"20.09.26";"20.09.26";"KARTENZAHLUNG";"Tankstelle";"";"";"";"";"";"";"ARAL Station 1234";"DE00123456780000000001";"COBADEFFXXX";"-62,35";"EUR";"Umsatz gebucht"
+"DE12500105170648489890";"15.09.26";"15.09.26";"LASTSCHRIFT";"Mitgliedsbeitrag Fußballverein";"DE98ZZZ09999999999";"M-001";"";"";"";"";"TSV Müllerhausen e.V.";"DE00123456780000000002";"GENODEF1XXX";"-12,00";"EUR";"Umsatz gebucht"
+"DE12500105170648489890";"03.09.26";"03.09.26";"DAUERAUFTRAG";"Miete September";"";"";"";"";"";"";"Vermieter Miete";"DE00123456780000000003";"GENODEF1XXX";"-850,00";"EUR";"Umsatz gebucht"
+"DE12500105170648489890";"01.09.26";"01.09.26";"GUTSCHR. UEBERWEISUNG";"Lohn/Gehalt 09/2026";"";"";"";"";"";"";"Arbeitgeber GmbH";"DE00123456780000000004";"GENODEF1XXX";"3.200,00";"EUR";"Umsatz gebucht"
+"DE12500105170648489890";"23.09.26";"23.09.26";"KARTENZAHLUNG";"Bäckerei";"";"";"";"";"";"";"Bäckerei Schmidt";"";"";"-4,20";"EUR";"Umsatz vorgemerkt"

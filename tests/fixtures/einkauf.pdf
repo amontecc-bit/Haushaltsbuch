@@ -1,0 +1,40 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 274 >>
+stream
+BT /F1 12 Tf 50 780 Td 16 TL
+(REWE Lieferservice - Rechnung) Tj T*
+(Bestellung vom 12.08.2026) Tj T*
+(Artikel Menge Einzelpreis Gesamt) Tj T*
+(Bio Bananen 2 0,99 1,98) Tj T*
+(3 x Joghurt Natur 0,59 1,77) Tj T*
+(Spuelmittel 1 1,45 1,45) Tj T*
+(Gesamtbetrag 5,20 EUR) Tj T*
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000000566 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+663
+%%EOF

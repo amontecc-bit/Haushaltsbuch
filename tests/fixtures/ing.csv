@@ -1,0 +1,16 @@
+﻿Umsatzanzeige;Datei erstellt am: 25.09.2026 10:00
+
+IBAN;DE89 3704 0044 0532 0130 00
+Kontoname;Girokonto
+Bank;ING
+Kunde;Test
+Zeitraum;01.09.2026 - 25.09.2026
+Saldo;2.345,67;EUR
+
+Sortierung;Datum absteigend
+
+
+Buchung;Wertstellungsdatum;Auftraggeber/Empfänger;Buchungstext;Verwendungszweck;Saldo;Währung;Betrag;Währung
+24.09.2026;24.09.2026;Netflix International B.V.;Lastschrift;Netflix Monatsabo;2.345,67;EUR;-13,99;EUR
+21.09.2026;21.09.2026;dm-drogerie markt;Lastschrift;dm Filiale 123;2.359,66;EUR;-23,45;EUR
+21.09.2026;21.09.2026;dm-drogerie markt;Lastschrift;dm Filiale 123;2.383,11;EUR;-23,45;EUR

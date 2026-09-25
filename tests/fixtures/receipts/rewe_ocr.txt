@@ -1,0 +1,19 @@
+REWE
+Musterstraße 1
+12345 Musterstadt
+UID Nr.: DE123456789
+EUR
+BIO VOLLMILCH 3,8%         1,198
+BANANE CHIQUITA            1,49 B
+0,812 kg x 1,84 EUR/kg
+BROETCHEN                  1,50 B
+5 Stk x 0,30
+KAFFEE CREMA 1KG          12:99 B
+Rabatt                    -2,00 B
+LEERGUT                   0,75 A
+PFAND 9,25 EUR             0,50 A
+SUMME                EUR 14,92
+Geg. Kartenzahlung EUR 14,92
+Datum: 21.09.2026 Uhrzeit: 18:03:12
+Steuer %   Netto   Steuer   Brutto
+B= 7,0%    14,59    1,02    15,61

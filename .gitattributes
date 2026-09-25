@@ -1,0 +1,11 @@
+# Quelltexte mit LF im Repository
+* text=auto eol=lf
+# Testdaten und Binärdateien nie umwandeln (PDF-Offsets, Bank-CSV-Kodierungen)
+*.pdf binary
+*.png binary
+*.jpg binary
+*.gz binary
+*.woff binary
+*.woff2 binary
+tests/fixtures/** -text
+public/assets/vendor/** -text
