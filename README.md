@@ -5,6 +5,8 @@ Einkäufe mit Einzelposten (von Hand, per PDF oder per Foto vom Kassenbon), auto
 Auswertungen, Prognose der Kontostände und Kreditverwaltung. Läuft im Browser auf Desktop und Smartphone
 und lässt sich auf dem Handy als App installieren (PWA).
 
+**Bedienungsanleitung mit Screenshots:** [docs/ANLEITUNG.md](docs/ANLEITUNG.md)
+
 **Technik:** PHP 8.1+ (eigenes, schlankes MVC), MySQL/MariaDB, Bootstrap 5, Alpine.js, Chart.js.
 Alle Frontend-Bibliotheken liegen lokal unter `public/assets/vendor/`. Es wird kein CDN benötigt.
 

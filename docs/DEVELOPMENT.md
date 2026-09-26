@@ -109,3 +109,17 @@ Kategorie-Auswertungen unter der Pseudo-ID `ReportService::TRANSFER_ID` (-2, „
    `RewriteCond %{HTTP_COOKIE} hbtest=1` / `RewriteCond %{REQUEST_FILENAME} !-f` / `RewriteRule ^ __test.php [L,QSA]`.
    Test-Client mit Cookie `hbtest=1` gegen `http://127.0.0.1/...` (Pythons Cookie-Jar verliert Cookies bei `localhost`).
    Danach `.htaccess` zurücksetzen, `__test.php` löschen, Test-DB droppen und eigene Uploads in `storage/uploads/` entfernen.
+
+## Bedienungsanleitung und Screenshots
+
+`docs/ANLEITUNG.md` ist die Anleitung für Endnutzer, die Bilder liegen in `docs/anleitung/*.png`. Sie stammen aus der
+Demo-Datenbank `haushaltsbuch_demo` (Familie Muster, ausgedachte Zahlen) – **nie Screenshots aus der echten DB**.
+
+1. `php bin/demo_seed.php` – legt `haushaltsbuch_demo` komplett neu an (12 Monate Buchungen relativ zu heute, Fixkosten,
+   Einkäufe, Kredit, Szenario, Regeln; Anmeldung `anna@example.org` / `demo1234`). Bricht ab, falls die DB anders hieße.
+2. Temporär `public/__test.php` (wie oben unter 3., fest auf `haushaltsbuch_demo`, `?__login=1`) und die
+   Cookie-Umleitung in `public/.htaccess` einbauen.
+3. `python bin/screenshots.py [name …]` – steuert Chrome headless per DevTools (eigenes Profil, Prozess wird gezielt
+   beendet), Desktop 1280 px und Handy 390 px (@2x), Diagramm-Animationen aus. Liste der Bilder in `SHOTS`.
+   Für die Import-Vorschau `HB_IMPORT_CSV=<Sparkasse-CSV>` setzen (Konto 1, Datei mit IBAN `DE02120300000000202051`).
+4. Danach `.htaccess` zurücksetzen, `__test.php` löschen und die hochgeladene CSV aus `storage/uploads/import/` entfernen.

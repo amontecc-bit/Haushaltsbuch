@@ -1,7 +1,8 @@
 # CLAUDE.md – Haushaltsbuch
 
 Arbeitsgrundlage für die Weiterentwicklung. Endnutzer-Doku (Funktionen, Deployment) steht in `README.md`,
-technische Details zu Abläufen und Tests in `docs/DEVELOPMENT.md`.
+technische Details zu Abläufen und Tests in `docs/DEVELOPMENT.md`, die Bedienungsanleitung mit Screenshots in
+`docs/ANLEITUNG.md` (bei sichtbaren UI-Änderungen Text und Bilder mitziehen, siehe `docs/DEVELOPMENT.md`).
 
 ## Projekt in Kürze
 
