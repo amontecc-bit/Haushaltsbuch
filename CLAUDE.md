@@ -95,13 +95,15 @@ Header `X-CSRF-Token`); `HB.post()` in `public/assets/js/app.js` setzt den Heade
 - **Tesseract-Sprachdaten** `deu.traineddata.gz` dürfen nicht mit `Content-Encoding: gzip` ausgeliefert werden
   (`public/.htaccess` regelt das).
 - **Bash-Heredocs mit viel PHP-Quoting** sind fehleranfällig – PHP-Dateien lieber mit dem Write-Tool schreiben.
+- **Lokale DB `haushaltsbuch` enthält echte Daten der Familie** – nie zurücksetzen oder mit Testdaten füllen.
+  Tests gegen eine Kopie (`mysqldump haushaltsbuch | mysql haushaltsbuch_test`), siehe `docs/DEVELOPMENT.md`.
 - Headless-Chrome hat eine Mindestbreite von ~500 px (Screenshots für „mobil“ mit 520 px machen).
 - **Beim Beenden von Test-Chrome nie `taskkill /IM chrome.exe`** – das schließt auch die Browserfenster des Nutzers.
   Nur den eigenen Prozess beenden (`Popen.kill()` bzw. nach eigenem `--user-data-dir` filtern).
 
 ## Status / mögliche nächste Schritte
 
-Alle geplanten Module sind umgesetzt und getestet (42 PHPUnit-Tests; Browser-Durchlauf Foto → lokale OCR → Speichern).
+Alle geplanten Module sind umgesetzt und getestet (43 PHPUnit-Tests; Browser-Durchlauf Foto → lokale OCR → Speichern).
 Noch nicht real getestet: Kamera auf echtem Smartphone (braucht HTTPS), KI-Erkennung mit echtem API-Schlüssel.
 Ideen: Budgets je Kategorie mit Warnung, Sparziele, Bearbeiten von CSV-Profilen in der Oberfläche,
 Konten-Export/Backup, E-Mail-Einladung für Familienmitglieder, Zwei-Faktor-Login.

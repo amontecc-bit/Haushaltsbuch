@@ -31,20 +31,32 @@ final class ReportService
         return $st->fetchAll();
     }
 
-    /** @return array{income:float, expense:float} */
-    public function totals(string $from, string $to, ?int $userId = null): array
+    /**
+     * Gemeinsamer Filter für Buchungen (Alias t): Haushalt, sichtbare Konten, optional ein Konto und eine Person,
+     * Zeitraum; Umbuchungen sind immer ausgeschlossen.
+     * @return array{0:string, 1:array}
+     */
+    private function scope(string $from, string $to, ?int $accountId = null, ?int $userId = null): array
     {
-        $userSql = $userId ? 'AND t.created_by = ?' : '';
-        $params = [$this->householdId, ...$this->accountIds, $from, $to];
+        $accIds = $accountId ? array_values(array_intersect($this->accountIds, [$accountId])) : $this->accountIds;
+        $in = $accIds ? implode(',', array_fill(0, count($accIds), '?')) : 'NULL';
+        $sql = "t.household_id = ? AND t.account_id IN ($in) AND t.transfer_group IS NULL AND t.booking_date BETWEEN ? AND ?";
+        $params = [$this->householdId, ...$accIds, $from, $to];
         if ($userId) {
+            $sql .= ' AND t.created_by = ?';
             $params[] = $userId;
         }
+        return [$sql, $params];
+    }
+
+    /** @return array{income:float, expense:float} */
+    public function totals(string $from, string $to, ?int $accountId = null, ?int $userId = null): array
+    {
+        [$where, $params] = $this->scope($from, $to, $accountId, $userId);
         $r = $this->rows(
-            "SELECT COALESCE(SUM(CASE WHEN amount > 0 THEN amount END), 0) AS income,
-                    COALESCE(SUM(CASE WHEN amount < 0 THEN amount END), 0) AS expense
-             FROM transactions t
-             WHERE t.household_id = ? AND t.account_id IN ({$this->in()}) AND t.transfer_group IS NULL
-               AND t.booking_date BETWEEN ? AND ? $userSql",
+            "SELECT COALESCE(SUM(CASE WHEN t.amount > 0 THEN t.amount END), 0) AS income,
+                    COALESCE(SUM(CASE WHEN t.amount < 0 THEN t.amount END), 0) AS expense
+             FROM transactions t WHERE $where",
             $params
         )[0];
         return ['income' => (float) $r['income'], 'expense' => (float) $r['expense']];
@@ -59,16 +71,9 @@ final class ReportService
     public function byCategory(string $from, string $to, string $type = 'expense', ?int $parentId = null, bool $splitPurchases = true, ?int $accountId = null, ?int $userId = null): array
     {
         $sign = $type === 'income' ? '> 0' : '< 0';
-        $accIds = $accountId ? array_values(array_intersect($this->accountIds, [$accountId])) : $this->accountIds;
-        $in = $accIds ? implode(',', array_fill(0, count($accIds), '?')) : 'NULL';
-        $userSql = $userId ? 'AND t.created_by = ?' : '';
-        $base = [$this->householdId, ...$accIds, $from, $to];
-        if ($userId) {
-            $base[] = $userId;
-        }
+        [$scope, $base] = $this->scope($from, $to, $accountId, $userId);
         $linked = 'EXISTS (SELECT 1 FROM purchases p WHERE p.transaction_id = t.id AND EXISTS (SELECT 1 FROM purchase_items i WHERE i.purchase_id = p.id))';
-        $txWhere = "t.household_id = ? AND t.account_id IN ($in) AND t.transfer_group IS NULL AND t.amount $sign
-                    AND t.booking_date BETWEEN ? AND ? $userSql";
+        $txWhere = "$scope AND t.amount $sign";
 
         // Teil A: Buchungen (ggf. ohne verknüpfte Einkäufe)
         $parts = ["SELECT t.category_id AS cid, t.amount AS amt, 1 AS cnt FROM transactions t WHERE $txWhere" . ($splitPurchases && $type === 'expense' ? " AND NOT $linked" : '')];
@@ -122,18 +127,16 @@ final class ReportService
     }
 
     /** Einnahmen/Ausgaben je Monat: ['2024-01' => ['income' => .., 'expense' => ..]] */
-    public function monthly(string $from, string $to, ?int $accountId = null): array
+    public function monthly(string $from, string $to, ?int $accountId = null, ?int $userId = null): array
     {
-        $accIds = $accountId ? array_values(array_intersect($this->accountIds, [$accountId])) : $this->accountIds;
-        $in = $accIds ? implode(',', array_fill(0, count($accIds), '?')) : 'NULL';
+        [$where, $params] = $this->scope($from, $to, $accountId, $userId);
         $rows = $this->rows(
-            "SELECT DATE_FORMAT(booking_date, '%Y-%m') AS ym,
-                    SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) AS income,
-                    SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END) AS expense
-             FROM transactions WHERE household_id = ? AND account_id IN ($in) AND transfer_group IS NULL
-               AND booking_date BETWEEN ? AND ?
+            "SELECT DATE_FORMAT(t.booking_date, '%Y-%m') AS ym,
+                    SUM(CASE WHEN t.amount > 0 THEN t.amount ELSE 0 END) AS income,
+                    SUM(CASE WHEN t.amount < 0 THEN -t.amount ELSE 0 END) AS expense
+             FROM transactions t WHERE $where
              GROUP BY ym ORDER BY ym",
-            [$this->householdId, ...$accIds, $from, $to]
+            $params
         );
         $out = [];
         foreach (self::monthRange($from, $to) as $ym) {
@@ -146,15 +149,15 @@ final class ReportService
     }
 
     /** Ausgaben je Monat und Hauptkategorie (für gestapelte Balken) */
-    public function monthlyByCategory(string $from, string $to, int $top = 8): array
+    public function monthlyByCategory(string $from, string $to, ?int $accountId = null, ?int $userId = null, int $top = 8): array
     {
+        [$where, $params] = $this->scope($from, $to, $accountId, $userId);
         $rows = $this->rows(
             "SELECT DATE_FORMAT(t.booking_date, '%Y-%m') AS ym, COALESCE(c.parent_id, c.id) AS cid, SUM(-t.amount) AS total
              FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
-             WHERE t.household_id = ? AND t.account_id IN ({$this->in()}) AND t.transfer_group IS NULL AND t.amount < 0
-               AND t.booking_date BETWEEN ? AND ?
+             WHERE $where AND t.amount < 0
              GROUP BY ym, cid",
-            [$this->householdId, ...$this->accountIds, $from, $to]
+            $params
         );
         $months = self::monthRange($from, $to);
         $sumByCat = [];
@@ -184,15 +187,15 @@ final class ReportService
         return ['labels' => array_map('month_label', $months), 'datasets' => $out];
     }
 
-    public function topPayees(string $from, string $to, int $limit = 15): array
+    public function topPayees(string $from, string $to, ?int $accountId = null, ?int $userId = null, int $limit = 15): array
     {
+        [$where, $params] = $this->scope($from, $to, $accountId, $userId);
         return $this->rows(
             "SELECT t.payee, COUNT(*) AS cnt, SUM(-t.amount) AS total
              FROM transactions t
-             WHERE t.household_id = ? AND t.account_id IN ({$this->in()}) AND t.transfer_group IS NULL AND t.amount < 0
-               AND t.booking_date BETWEEN ? AND ? AND CHAR_LENGTH(t.payee) > 0
+             WHERE $where AND t.amount < 0 AND CHAR_LENGTH(t.payee) > 0
              GROUP BY t.payee ORDER BY total DESC LIMIT " . (int) $limit,
-            [$this->householdId, ...$this->accountIds, $from, $to]
+            $params
         );
     }
 

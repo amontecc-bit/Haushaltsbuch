@@ -46,7 +46,12 @@ final class PurchaseController extends Controller
     public function create(): void
     {
         $mode = in_array($this->request->str('mode'), ['manual', 'photo', 'pdf'], true) ? $this->request->str('mode') : 'photo';
-        $purchase = ['id' => null, 'purchase_date' => date('Y-m-d'), 'store' => '', 'account_id' => null, 'transaction_id' => null,
+        // Vorgabe: vom Konto buchen – zuletzt für Einkäufe benutztes Konto, sonst erstes Girokonto
+        $bookable = (new AccountRepository())->options($this->hid, Auth::accountIds('book'));
+        $last = (new PurchaseRepository())->lastAccountId($this->hid, (int) Auth::id());
+        $giro = array_values(array_filter($bookable, fn ($a) => $a['type'] === 'giro'));
+        $default = in_array($last, array_map('intval', array_column($bookable, 'id')), true) ? $last : ($giro[0]['id'] ?? $bookable[0]['id'] ?? null);
+        $purchase = ['id' => null, 'purchase_date' => date('Y-m-d'), 'store' => '', 'account_id' => $default, 'transaction_id' => null,
             'note' => '', 'source' => $mode === 'manual' ? 'manual' : $mode, 'total' => 0];
         $this->renderForm($purchase, [], $mode, 'Einkauf erfassen');
     }
@@ -234,10 +239,21 @@ final class PurchaseController extends Controller
         $amount = $total !== '' ? Money::toDecimal(abs((int) Money::parse($total))) : null;
         $rows = (new TransactionRepository())->candidatesForPurchase($this->hid, Auth::accountIds('view'), $date, $amount);
         $current = $this->request->int('current');
-        $this->json(['candidates' => array_map(fn ($r) => [
-            'id' => (int) $r['id'], 'label' => date_de($r['booking_date']) . ' · ' . ($r['payee'] ?: 'Buchung') . ' · ' . $r['account_name'] . ' · ' . money($r['amount']),
-            'exact' => $amount !== null && Money::toCents($r['amount']) === -Money::toCents($amount),
-        ], array_filter($rows, fn ($r) => (int) $r['id'] !== $current))]);
+        $store = $this->request->str('store');
+        $out = [];
+        foreach ($rows as $r) {
+            if ((int) $r['id'] === $current) {
+                continue;
+            }
+            $out[] = [
+                'id' => (int) $r['id'], 'label' => date_de($r['booking_date']) . ' · ' . ($r['payee'] ?: 'Buchung') . ' · ' . $r['account_name'] . ' · ' . money($r['amount']),
+                'exact' => $amount !== null && Money::toCents($r['amount']) === -Money::toCents($amount),
+                'same_payee' => CategorizationService::samePayee($store, (string) $r['payee']),
+            ];
+        }
+        // Exakter Betrag beim selben Anbieter zuerst
+        usort($out, fn ($a, $b) => [$b['exact'] && $b['same_payee'], $b['exact']] <=> [$a['exact'] && $a['same_payee'], $a['exact']]);
+        $this->json(['candidates' => $out]);
     }
 
     // ---------------------------------------------------------------------

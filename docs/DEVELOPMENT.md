@@ -76,5 +76,10 @@ Fixkosten angelegt sind (Button auf der Kreditseite).
      per Python `websocket-client` (installiert) `Runtime.evaluate` pollen, Dateien mit `DOM.setFileInputFiles`
      setzen, Alpine-Zustand über `Alpine.$data(el)` lesen. Prozess am Ende gezielt mit `Popen.kill()` beenden.
    - Test-Kassenbon als Bild: mit GD + `imagettftext` und `C:/Windows/Fonts/consola.ttf` aus einer Textdatei erzeugen.
-3. Testdaten danach entfernen (DB zurücksetzen, `storage/uploads/{purchases,tmp,import}` löschen), damit der Nutzer
-   mit der Ersteinrichtung starten kann.
+3. **Die lokale DB enthält echte Daten** – nicht zurücksetzen. Stattdessen eine Kopie `haushaltsbuch_test` anlegen
+   (`mysqldump -uroot haushaltsbuch | mysql -uroot haushaltsbuch_test`) und nur Testanfragen dorthin leiten:
+   temporär `public/__test.php` (nur 127.0.0.1; setzt `$_ENV['DB_NAME']`/`putenv`, optional `?__login=<user_id>`,
+   dann `require index.php`) plus in `public/.htaccess` direkt nach `RewriteEngine On`:
+   `RewriteCond %{HTTP_COOKIE} hbtest=1` / `RewriteCond %{REQUEST_FILENAME} !-f` / `RewriteRule ^ __test.php [L,QSA]`.
+   Test-Client mit Cookie `hbtest=1` gegen `http://127.0.0.1/...` (Pythons Cookie-Jar verliert Cookies bei `localhost`).
+   Danach `.htaccess` zurücksetzen, `__test.php` löschen, Test-DB droppen und eigene Uploads in `storage/uploads/` entfernen.

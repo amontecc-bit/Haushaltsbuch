@@ -61,6 +61,42 @@ final class PurchaseRepository extends Repository
         );
     }
 
+    /**
+     * Einkäufe ohne verknüpfte Buchung, deren Summe zu einer Kontobuchung passt (für den CSV-Import).
+     * Die Bank bucht meist einige Tage nach dem Einkauf.
+     */
+    public function unlinkedForImport(int $householdId, int $accountId, string $total, string $bookingDate): array
+    {
+        return $this->many(
+            'SELECT p.* FROM purchases p
+             WHERE p.household_id = ? AND p.transaction_id IS NULL AND (p.account_id IS NULL OR p.account_id = ?)
+               AND p.total = ? AND p.purchase_date BETWEEN DATE_SUB(?, INTERVAL 10 DAY) AND DATE_ADD(?, INTERVAL 3 DAY)
+             ORDER BY ABS(DATEDIFF(p.purchase_date, ?)) LIMIT 10',
+            [$householdId, $accountId, $total, $bookingDate, $bookingDate, $bookingDate]
+        );
+    }
+
+    /** Konto, von dem die Person zuletzt einen Einkauf bezahlt hat */
+    public function lastAccountId(int $householdId, int $userId): ?int
+    {
+        $v = $this->value(
+            'SELECT account_id FROM purchases WHERE household_id = ? AND created_by = ? AND account_id IS NOT NULL ORDER BY id DESC LIMIT 1',
+            [$householdId, $userId]
+        );
+        return $v ? (int) $v : null;
+    }
+
+    /** Hauptkategorie mit dem größten Anteil an den Posten */
+    public function dominantCategory(int $purchaseId): ?int
+    {
+        $v = $this->value(
+            'SELECT COALESCE(c.parent_id, c.id) FROM purchase_items i JOIN categories c ON c.id = i.category_id
+             WHERE i.purchase_id = ? GROUP BY COALESCE(c.parent_id, c.id) ORDER BY SUM(i.total_price) DESC LIMIT 1',
+            [$purchaseId]
+        );
+        return $v ? (int) $v : null;
+    }
+
     public function items(int $purchaseId): array
     {
         return $this->many(

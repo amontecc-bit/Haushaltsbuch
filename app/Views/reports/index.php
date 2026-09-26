@@ -39,6 +39,15 @@ ob_start(); ?>
     <a class="btn btn-sm btn-outline-secondary" href="<?= e(url('/reports/export', $base)) ?>"><i class="bi bi-download"></i> Buchungen als CSV</a>
 </div>
 
+<?php
+$scopeLabel = array_filter([
+    $accountId ? ('Konto „' . (array_column($accounts, 'name', 'id')[$accountId] ?? '?') . '“') : null,
+    $userId ? ('erfasst von ' . (array_column($users, 'name', 'id')[$userId] ?? '?')) : null,
+]);
+?>
+<?php if ($scopeLabel): ?>
+    <div class="small text-body-secondary mb-2"><i class="bi bi-funnel"></i> Alle Zahlen gelten nur für: <?= e(implode(', ', $scopeLabel)) ?></div>
+<?php endif; ?>
 <div class="row g-3 mb-3">
     <div class="col-6 col-lg-3"><div class="card stat-card h-100"><div class="card-body">
         <div class="stat-label">Einnahmen</div><div class="stat-value"><?= money($totals['income']) ?></div>
@@ -86,7 +95,7 @@ ob_start(); ?>
                                 <?php if (!$parentCat && $c['has_children']): ?>
                                     <a href="<?= e(url('/reports', $base + ['parent' => $c['id']])) ?>"><?= e($c['name']) ?></a> <i class="bi bi-chevron-right small text-body-secondary"></i>
                                 <?php else: ?>
-                                    <a class="text-body" href="<?= e(url('/transactions', ['category_id' => $c['id'] ?? 'none', 'from' => $from, 'to' => $to, 'type' => 'expense'])) ?>"><?= e($c['name']) ?></a>
+                                    <a class="text-body" href="<?= e(url('/transactions', array_filter(['category_id' => $c['id'] ?? 'none', 'from' => $from, 'to' => $to, 'type' => 'expense', 'account_id' => $accountId, 'user_id' => $userId]))) ?>"><?= e($c['name']) ?></a>
                                 <?php endif; ?>
                             </td>
                             <td class="table-amount"><?= money($c['total']) ?></td>

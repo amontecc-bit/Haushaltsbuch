@@ -6,11 +6,14 @@ namespace App\Controllers;
 
 use App\Core\Auth;
 use App\Core\Config;
+use App\Core\Money;
 use App\Core\Session;
 use App\Repositories\AccountRepository;
 use App\Repositories\CategoryRepository;
 use App\Repositories\CsvProfileRepository;
+use App\Repositories\PurchaseRepository;
 use App\Repositories\RecurringRepository;
+use App\Repositories\RuleRepository;
 use App\Repositories\TransactionRepository;
 use App\Services\CategorizationService;
 use App\Services\CsvImportService;
@@ -132,6 +135,47 @@ final class ImportController extends Controller
         $this->redirect('/import/preview', $name !== '' ? "Profil „{$name}“ gespeichert." : null);
     }
 
+    /**
+     * AJAX: Kategorie-Zuweisung als dauerhafte Regel speichern.
+     * Antwort: die Zeilen (Hashes) der aktuellen Datei, auf die die neue Regel passt – die Vorschau übernimmt dort die Kategorie.
+     */
+    public function rule(): void
+    {
+        $state = $this->state();
+        if (Auth::isChild()) {
+            $this->json(['error' => 'Keine Berechtigung, Regeln anzulegen.'], 403);
+        }
+        $field = in_array($this->request->str('field'), ['payee', 'purpose', 'any'], true) ? $this->request->str('field') : 'payee';
+        $operator = in_array($this->request->str('operator'), ['contains', 'equals', 'starts'], true) ? $this->request->str('operator') : 'contains';
+        $value = mb_strtolower(trim(mb_substr($this->request->str('value'), 0, 190)));
+        $cat = (new CategoryRepository())->validId($this->request->int('category_id'), $this->hid);
+        if ($value === '' || !$cat) {
+            $this->json(['error' => 'Bitte Suchbegriff und Kategorie angeben.'], 422);
+        }
+        $rules = new RuleRepository();
+        if (!$rules->exists($this->hid, 'transaction', $field, $operator, $value)) {
+            $rules->create($this->hid, [
+                'target' => 'transaction', 'field' => $field, 'operator' => $operator,
+                'value' => $value, 'category_id' => $cat, 'priority' => 100,
+            ]);
+        }
+        $rule = ['field' => $field, 'operator' => $operator, 'value' => $value];
+
+        $content = CsvImportService::readFile($this->path($state));
+        [, $mapping, $delimiter, $decimalSep] = $this->resolveMapping($state, $content);
+        $rows = CsvImportService::parse($content, $delimiter);
+        $header = $mapping ? CsvImportService::locateHeader($rows, $mapping) : null;
+        $records = $header ? CsvImportService::assignHashes($state['account_id'], CsvImportService::records($rows, $header, $decimalSep)) : [];
+        $hashes = [];
+        foreach ($records as $r) {
+            // gleiche Felder wie beim Vorschlag in analyse()
+            if (CategorizationService::ruleMatches($rule, ['payee' => $r['payee'], 'purpose' => $r['purpose'] . ' ' . $r['booking_text']])) {
+                $hashes[] = $r['hash'];
+            }
+        }
+        $this->json(['ok' => true, 'category' => (string) $cat, 'hashes' => $hashes]);
+    }
+
     public function commit(): void
     {
         $state = $this->state();
@@ -146,21 +190,57 @@ final class ImportController extends Controller
         $records = $this->analyse($state['account_id'], CsvImportService::records($rows, $header, $decimalSep));
         $actions = $this->request->arr('action');
         $cats = $this->request->arr('category');
+        $recurring = array_filter($this->request->arr('recurring'), fn ($i) => array_key_exists((string) $i, RecurrenceService::STEPS));
+        $linkPurchase = $this->request->arr('purchase');
         $catRepo = new CategoryRepository();
         $txRepo = new TransactionRepository();
+        $purchaseRepo = new PurchaseRepository();
         $profiles = new CsvProfileRepository();
 
-        $imported = $linked = $skipped = 0;
+        $imported = $linked = $skipped = $templates = $purchases = 0;
         $batch = $profiles->createBatch($this->hid, $state['account_id'], $state['name'], Auth::id());
-        $txRepo->transaction(function () use ($records, $actions, $cats, $catRepo, $txRepo, $state, $batch, &$imported, &$linked, &$skipped) {
+        $txRepo->transaction(function () use ($records, $actions, $cats, $recurring, $linkPurchase, $catRepo, $txRepo, $purchaseRepo, $state, $batch, &$imported, &$linked, &$skipped, &$templates, &$purchases) {
+            $categoryOf = function (array $r) use ($cats, $catRepo): ?int {
+                $chosen = array_key_exists($r['hash'], $cats) ? (int) $cats[$r['hash']] : ($r['category_id'] ?? null);
+                return $catRepo->validId($chosen ? (int) $chosen : null, $this->hid);
+            };
+            // Als Fixkosten markierte Zeilen → Vorlagen anlegen; gleiche Zahlungen (Empfänger + Betrag) der Datei gehören dazu
+            $newTemplates = [];
+            $lastDate = max(array_column($records, 'date') ?: [date('Y-m-d')]);
+            foreach ($records as $r) {
+                if (!isset($recurring[$r['hash']]) || $r['recurring_id'] || $r['status'] === 'duplicate' || ($actions[$r['hash']] ?? $r['default_action']) !== 'import') {
+                    continue;
+                }
+                $key = mb_strtolower((string) $r['payee']) . '|' . $r['amount'];
+                if (isset($newTemplates[$key])) {
+                    continue;
+                }
+                $newTemplates[$key] = (new RecurringRepository())->create($this->hid, [
+                    'account_id'   => $state['account_id'],
+                    'category_id'  => $categoryOf($r),
+                    'amount'       => $r['amount'],
+                    'payee'        => mb_substr((string) $r['payee'], 0, 190) ?: null,
+                    'purpose'      => mb_substr((string) $r['purpose'], 0, 255) ?: null,
+                    'interval'     => $recurring[$r['hash']],
+                    'day_of_month' => (int) substr($r['date'], 8, 2),
+                    'start_date'   => $r['date'],
+                    'auto_book'    => 1,
+                    'active'       => 1,
+                    // Termine bis zum Ende der Datei stehen schon im Kontoauszug – erst danach automatisch buchen
+                    'last_booked_date' => max($r['date'], $lastDate),
+                    'created_by'   => Auth::id(),
+                ]);
+                $templates++;
+            }
+
             foreach ($records as $r) {
                 $action = $actions[$r['hash']] ?? $r['default_action'];
                 if ($r['status'] === 'duplicate' || $action === 'skip') {
                     $skipped++;
                     continue;
                 }
-                $chosen = array_key_exists($r['hash'], $cats) ? (int) $cats[$r['hash']] : ($r['category_id'] ?? null);
-                $cat = $catRepo->validId($chosen ? (int) $chosen : null, $this->hid);
+                $cat = $categoryOf($r);
+                $r['recurring_id'] ??= $newTemplates[mb_strtolower((string) $r['payee']) . '|' . $r['amount']] ?? null;
                 if ($action === 'link' && $r['match']) {
                     $existing = $r['match'];
                     $upd = ['import_hash' => $r['hash'], 'booking_date' => $r['date'], 'import_batch_id' => $batch];
@@ -177,7 +257,7 @@ final class ImportController extends Controller
                     $linked++;
                     continue;
                 }
-                $txRepo->create($this->hid, [
+                $txId = $txRepo->create($this->hid, [
                     'account_id'      => $state['account_id'],
                     'booking_date'    => $r['date'],
                     'amount'          => $r['amount'],
@@ -190,21 +270,36 @@ final class ImportController extends Controller
                     'recurring_id'    => $r['recurring_id'],
                     'created_by'      => Auth::id(),
                 ]);
+                // Passender Einkauf ohne Buchung wird mit der importierten Buchung verknüpft
+                if ($r['purchase'] && ($linkPurchase[$r['hash']] ?? '1') === '1') {
+                    $upd = ['transaction_id' => $txId];
+                    if (!$r['purchase']['account_id']) {
+                        $upd['account_id'] = $state['account_id'];
+                    }
+                    $purchaseRepo->update((int) $r['purchase']['id'], $this->hid, $upd);
+                    $purchases++;
+                }
                 $imported++;
             }
         });
         $profiles->finishBatch($batch, count($records), $imported + $linked, $skipped);
+        if ($templates) {
+            RecurrenceService::materializeDue($this->hid);
+        }
         @unlink($this->path($state));
         Session::forget('import');
         $msg = "$imported Buchungen importiert";
         $msg .= $linked ? ", $linked mit vorhandenen Buchungen zusammengeführt" : '';
+        $msg .= $purchases ? ", $purchases mit Einkäufen verknüpft" : '';
+        $msg .= $templates ? ", $templates Fixkosten angelegt" : '';
         $msg .= $skipped ? ", $skipped übersprungen." : '.';
         $this->redirect('/transactions?account_id=' . $state['account_id'], $msg);
     }
 
     /**
-     * Status je Zeile: duplicate (bereits importiert), match (entspricht vorhandener Buchung, z. B. aus Dauerauftrag),
-     * pending (vorgemerkt), new. Dazu Kategorie-Vorschlag und passende wiederkehrende Buchung.
+     * Status je Zeile: duplicate (bereits importiert), match (entspricht vorhandener Buchung, z. B. aus Dauerauftrag
+     * oder Einkauf), pending (vorgemerkt), new. Dazu Kategorie-Vorschlag, passende wiederkehrende Buchung und
+     * ein passender Einkauf ohne Buchung.
      */
     private function analyse(int $accountId, array $records): array
     {
@@ -215,9 +310,11 @@ final class ImportController extends Controller
             (new RecurringRepository())->all($this->hid, [$accountId], true),
             fn ($t) => !$t['to_account_id'] && (int) $t['account_id'] === $accountId
         );
-        $usedMatches = [];
+        $purchaseRepo = new PurchaseRepository();
+        $usedMatches = $usedPurchases = [];
         foreach ($records as &$r) {
             $r['match'] = null;
+            $r['purchase'] = null;
             $r['recurring_id'] = null;
             $r['category_id'] = null;
             $r['suggestion'] = null;
@@ -226,14 +323,29 @@ final class ImportController extends Controller
                 $r['default_action'] = 'skip';
                 continue;
             }
-            $match = $txRepo->findMatchForImport($accountId, $r['amount'], $r['date']);
-            if ($match && !isset($usedMatches[$match['id']])) {
+            // Vorhandene Buchung: bevorzugt beim selben Empfänger/Geschäft, sonst nächstes Datum
+            $matches = array_filter($txRepo->matchesForImport($accountId, $r['amount'], $r['date']), fn ($m) => !isset($usedMatches[$m['id']]));
+            usort($matches, fn ($a, $b) => CategorizationService::samePayee($b['purchase_store'] ?: $b['payee'], $r['payee'])
+                <=> CategorizationService::samePayee($a['purchase_store'] ?: $a['payee'], $r['payee']));
+            $match = $matches[0] ?? null;
+            if ($match) {
                 $usedMatches[$match['id']] = true;
                 $r['match'] = $match;
                 $r['status'] = 'match';
                 $r['default_action'] = 'link';
                 $r['category_id'] = $match['category_id'];
                 continue;
+            }
+            // Einkauf (Bon/PDF) ohne Buchung mit gleicher Summe → beim Import verknüpfen
+            if ((float) $r['amount'] < 0) {
+                $total = Money::toDecimal(-Money::toCents($r['amount']));
+                $purchases = array_filter($purchaseRepo->unlinkedForImport($this->hid, $accountId, $total, $r['date']), fn ($p) => !isset($usedPurchases[$p['id']]));
+                usort($purchases, fn ($a, $b) => CategorizationService::samePayee($b['store'], $r['payee']) <=> CategorizationService::samePayee($a['store'], $r['payee']));
+                if ($p = $purchases[0] ?? null) {
+                    $usedPurchases[$p['id']] = true;
+                    $r['purchase'] = $p;
+                    $r['category_id'] = $purchaseRepo->dominantCategory((int) $p['id']);
+                }
             }
             foreach ($templates as $t) {
                 if ($t['amount'] === $r['amount']) {

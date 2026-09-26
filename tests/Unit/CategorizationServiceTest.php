@@ -46,6 +46,19 @@ final class CategorizationServiceTest extends TestCase
         self::assertTrue(CategorizationService::ruleMatches($regex, ['payee' => 'Miete 09/2026', 'purpose' => '']));
     }
 
+    public function testSamePayee(): void
+    {
+        self::assertTrue(CategorizationService::samePayee('REWE', 'REWE Markt GmbH Berlin'));
+        self::assertTrue(CategorizationService::samePayee('dm-drogerie markt', 'DM Drogeriemarkt SAGT DANKE'));
+        self::assertTrue(CategorizationService::samePayee('Lidl', 'LIDL DIENSTLEISTUNG GMBH'));
+        self::assertTrue(CategorizationService::samePayee('Bäckerei Kornblume', 'BAECKEREI KORNBLUME FIL. 3'));
+        // Allgemeine Wörter allein genügen nicht
+        self::assertFalse(CategorizationService::samePayee('Markt', 'EDEKA Markt Müller'));
+        self::assertFalse(CategorizationService::samePayee('ALDI', 'Stadtwerke Aldingen'));
+        self::assertFalse(CategorizationService::samePayee('', 'REWE'));
+        self::assertFalse(CategorizationService::samePayee('REWE', null));
+    }
+
     public function testClosestProduct(): void
     {
         $products = [

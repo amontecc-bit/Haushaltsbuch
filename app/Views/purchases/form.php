@@ -12,7 +12,8 @@ $init = [
     'note'        => (string) ($purchase['note'] ?? ''),
     'source'      => $purchase['source'],
     'linked'      => $purchase['transaction_id'] ? ($purchase['tx_payee'] ?? 'Buchung') . ' · ' . date_de($purchase['tx_date'] ?? '') . ' · ' . money($purchase['tx_amount'] ?? 0) : null,
-    'link'        => $purchase['transaction_id'] ? 'keep' : 'none',
+    // Neue Einkäufe: Vorgabe „vom Konto buchen“ (sofern ein buchbares Konto gewählt ist)
+    'link'        => $purchase['transaction_id'] ? 'keep' : ($isEdit || !in_array((int) $purchase['account_id'], $bookable, true) ? 'none' : 'new'),
     'totalManual' => $items ? '' : ((float) $purchase['total'] ? money_input($purchase['total']) : ''),
     'items'       => array_map(fn ($i) => [
         'name' => $i['name'], 'quantity' => (float) $i['quantity'], 'unit' => (string) $i['unit'],
@@ -200,6 +201,19 @@ $init = [
                             <div class="small text-body-secondary mt-1" x-show="!candidates.length">Keine passende Buchung ±7 Tage gefunden (z. B. noch nicht importiert).</div>
                         </div>
                         <div class="small text-body-secondary" x-show="link === 'new'">Es wird eine Ausgabe über die Summe angelegt. Kategorie: größter Anteil der Posten.</div>
+                        <div class="alert py-2 px-2 small mt-2 mb-0" x-show="duplicate" x-cloak :class="duplicate && duplicate.same_payee ? 'alert-warning' : 'alert-info'">
+                            <template x-if="duplicate">
+                                <div>
+                                    <div class="fw-semibold"><i class="bi bi-exclamation-triangle"></i> <span x-text="duplicate.same_payee ? 'Diese Ausgabe ist schon gebucht:' : 'Buchung mit gleichem Betrag gefunden:'"></span></div>
+                                    <div x-text="duplicate.label"></div>
+                                    <div class="mt-1" x-show="link === 'existing' && transactionId === String(duplicate.id)">Der Einkauf wird mit dieser Buchung verknüpft statt doppelt gebucht.</div>
+                                    <div class="d-flex flex-wrap gap-2 mt-2">
+                                        <button type="button" class="btn btn-sm btn-primary" x-show="!(link === 'existing' && transactionId === String(duplicate.id))" @click="useDuplicate()">Damit verknüpfen</button>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" x-show="link !== 'new' && canBook()" @click="link = 'new'; dupDismissed = true">Trotzdem neu buchen</button>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
                         <div class="small text-body-secondary mt-2">Verknüpfte Buchungen werden in den Auswertungen nach den Kategorien der Posten aufgeteilt.</div>
                     </div>
                 </div>

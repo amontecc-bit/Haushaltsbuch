@@ -128,10 +128,21 @@
             hasCamera: !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia),
             candidates: [],
             transactionId: '',
+            duplicate: null,     // bereits vorhandene Buchung mit gleicher Summe
+            dupKey: '',
+            dupDismissed: false,
+            dupTimer: null,
 
             init() {
                 if (!this.items.length && this.mode === 'manual') this.addItem(false);
                 this.$watch('mode', (m) => { if (m === 'manual' && !this.items.length) this.addItem(false); this.stopCamera(); });
+                if (!this.id) {
+                    const later = () => { clearTimeout(this.dupTimer); this.dupTimer = setTimeout(() => this.checkDuplicate(), 600); };
+                    this.$watch('date', later);
+                    this.$watch('store', later);
+                    this.$watch('totalManual', later);
+                    this.$watch('items', later);
+                }
             },
 
             // ---- Posten -------------------------------------------------
@@ -250,6 +261,8 @@
                     alert('Es wurden keine Posten erkannt. Bitte von Hand ergänzen oder die KI-Erkennung versuchen.');
                 }
                 this.recognized = true;
+                this.dupKey = '';
+                this.checkDuplicate();
                 this.loadCandidates();
             },
 
@@ -257,14 +270,42 @@
             async loadCandidates() {
                 if (this.link !== 'existing') return;
                 try {
-                    const r = await HB.post('/purchases/candidates', { date: this.date, total: String(this.total()), current: 0 });
+                    const r = await HB.post('/purchases/candidates', { date: this.date, total: String(this.total()), store: this.store, current: 0 });
                     this.candidates = r.candidates;
                     const exact = r.candidates.find((c) => c.exact);
                     if (exact && !this.transactionId) this.transactionId = String(exact.id);
                 } catch (e) { this.candidates = []; }
             },
+            /** Gibt es die Ausgabe schon als Buchung (z. B. aus dem CSV-Import)? Dann verknüpfen statt doppelt buchen. */
+            async checkDuplicate() {
+                if (this.id || this.link === 'keep') return false;
+                const total = this.total();
+                const key = [this.date, this.store, total].join('|');
+                if (key === this.dupKey) return false;
+                this.dupKey = key;
+                if (!total) { this.duplicate = null; return false; }
+                try {
+                    const r = await HB.post('/purchases/candidates', { date: this.date, total: String(total), store: this.store, current: 0 });
+                    const hit = r.candidates.find((c) => c.exact) || null;
+                    const changed = hit && (!this.duplicate || this.duplicate.id !== hit.id);
+                    this.duplicate = hit;
+                    if (!hit) return false;
+                    this.candidates = r.candidates;
+                    // Gleicher Betrag beim selben Anbieter: automatisch verknüpfen (solange nicht bewusst abgelehnt)
+                    if (changed && hit.same_payee && !this.dupDismissed && this.link !== 'existing') this.useDuplicate();
+                    return changed;
+                } catch (e) { return false; }
+            },
+            useDuplicate() {
+                if (!this.duplicate) return;
+                if (!this.candidates.some((c) => c.id === this.duplicate.id)) this.candidates.unshift(this.duplicate);
+                this.link = 'existing';
+                this.transactionId = String(this.duplicate.id);
+            },
             async save() {
                 this.error = '';
+                // Vor dem Neubuchen noch einmal prüfen – neu gefundene Doppelbuchung erst anzeigen
+                if (this.link === 'new' && !this.dupDismissed && await this.checkDuplicate()) return;
                 if (this.link === 'existing' && !this.transactionId) { this.error = 'Bitte eine Buchung auswählen.'; return; }
                 this.busy = true;
                 try {

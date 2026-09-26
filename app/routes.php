@@ -60,6 +60,7 @@ $router->get('/import', [ImportController::class, 'index']);
 $router->post('/import/upload', [ImportController::class, 'upload']);
 $router->get('/import/preview', [ImportController::class, 'preview']);
 $router->post('/import/preview', [ImportController::class, 'remap']);
+$router->post('/import/rule', [ImportController::class, 'rule']);
 $router->post('/import/commit', [ImportController::class, 'commit']);
 
 // Einkäufe

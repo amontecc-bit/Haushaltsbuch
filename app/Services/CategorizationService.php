@@ -178,6 +178,31 @@ final class CategorizationService
         return false;
     }
 
+    /**
+     * Geschäft laut Bon und Empfänger laut Bank gehören zusammen („REWE“ ↔ „REWE Markt GmbH Berlin“):
+     * ein aussagekräftiges Wort des Geschäfts kommt im Empfänger vor.
+     */
+    public static function samePayee(?string $store, ?string $payee): bool
+    {
+        // Banken schreiben Umlaute oft um („Baeckerei“) – beide Seiten gleich behandeln
+        $norm = fn (?string $s) => trim(preg_replace('/[^\p{L}\p{N}]+/u', ' ',
+            str_replace(['ä', 'ö', 'ü', 'ß'], ['ae', 'oe', 'ue', 'ss'], mb_strtolower((string) $s))));
+        $store = $norm($store);
+        $payee = ' ' . $norm($payee) . ' ';
+        if ($store === '' || trim($payee) === '') {
+            return false;
+        }
+        $generic = ['der', 'die', 'das', 'und', 'gmbh', 'markt', 'filiale', 'ohg', 'e', 'k', 'co', 'kg', 'ag', 'se', 'shop', 'store'];
+        foreach (explode(' ', $store) as $word) {
+            // kurze Namen („ALDI“, „dm“) nur als ganzes Wort, längere auch als Wortanfang („drogerie“ → „drogeriemarkt“)
+            $needle = ' ' . $word . (mb_strlen($word) < 5 ? ' ' : '');
+            if (mb_strlen($word) >= 2 && !in_array($word, $generic, true) && str_contains($payee, $needle)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** Ähnlichstes bekanntes Produkt mit Kategorie (≥ 80 % Übereinstimmung) */
     public static function closestProduct(string $norm, array $products): ?array
     {

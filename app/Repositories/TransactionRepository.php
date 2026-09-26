@@ -130,16 +130,17 @@ final class TransactionRepository extends Repository
     }
 
     /**
-     * Vorhandene Buchung (z.B. aus Dauerauftrag, manuell) mit gleichem Betrag in einem Datumsfenster,
-     * die noch nicht aus einem Import stammt.
+     * Vorhandene Buchungen (z.B. aus Dauerauftrag, Einkauf, manuell) mit gleichem Betrag in einem Datumsfenster,
+     * die noch nicht aus einem Import stammen – nächstgelegenes Datum zuerst.
      */
-    public function findMatchForImport(int $accountId, string $amount, string $date, int $days = 5): ?array
+    public function matchesForImport(int $accountId, string $amount, string $date, int $days = 5): array
     {
-        return $this->one(
-            "SELECT * FROM transactions
-             WHERE account_id = ? AND amount = ? AND import_hash IS NULL
-               AND booking_date BETWEEN DATE_SUB(?, INTERVAL ? DAY) AND DATE_ADD(?, INTERVAL ? DAY)
-             ORDER BY ABS(DATEDIFF(booking_date, ?)) LIMIT 1",
+        return $this->many(
+            "SELECT t.*, (SELECT p.store FROM purchases p WHERE p.transaction_id = t.id LIMIT 1) AS purchase_store
+             FROM transactions t
+             WHERE t.account_id = ? AND t.amount = ? AND t.import_hash IS NULL
+               AND t.booking_date BETWEEN DATE_SUB(?, INTERVAL ? DAY) AND DATE_ADD(?, INTERVAL ? DAY)
+             ORDER BY ABS(DATEDIFF(t.booking_date, ?)) LIMIT 10",
             [$accountId, $amount, $date, $days, $date, $days, $date]
         );
     }
