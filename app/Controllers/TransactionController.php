@@ -23,18 +23,21 @@ final class TransactionController extends Controller
     public function index(): void
     {
         $r = $this->request;
+        $ids = Auth::accountIds('view');
+        $accountIds = array_map('intval', $r->arr('account_ids'));
+        if ($r->int('account_id')) {
+            $accountIds[] = (int) $r->int('account_id'); // Links aus Übersicht/Konten/Import
+        }
         $filters = [
-            'account_id'  => $r->int('account_id'),
+            'account_ids' => array_values(array_unique(array_intersect($accountIds, $ids))),
             'category_id' => $r->str('category_id') === 'none' ? 'none' : $r->int('category_id'),
-            'from'        => valid_date($r->str('from')),
-            'to'          => valid_date($r->str('to')),
             'q'           => mb_substr($r->str('q'), 0, 100),
-            'type'        => in_array($r->str('type'), ['income', 'expense', 'transfer'], true) ? $r->str('type') : '',
+            'type'        => in_array($r->str('type'), ['income', 'expense', 'transfer', 'fixed'], true) ? $r->str('type') : '',
             'user_id'     => $r->int('user_id'),
         ];
+        [$filters['period'], $filters['from'], $filters['to']] = $this->period('all', true);
         $page = max(1, (int) $r->int('page', 1));
         $repo = new TransactionRepository();
-        $ids = Auth::accountIds('view');
         $rows = $repo->search($this->hid, $ids, $filters, self::PER_PAGE + 1, ($page - 1) * self::PER_PAGE);
         $hasMore = count($rows) > self::PER_PAGE;
         $rows = array_slice($rows, 0, self::PER_PAGE);
@@ -137,6 +140,7 @@ final class TransactionController extends Controller
             'id' => $id, 'amount' => money_input(abs($cents) / 100), 'booking_date' => $tx['booking_date'],
             'payee' => $tx['payee'], 'purpose' => $tx['purpose'], 'note' => $tx['note'], 'category_id' => $tx['category_id'],
             'source' => $tx['source'], 'recurring_id' => $tx['recurring_id'],
+            'recurring_payee' => $tx['recurring_id'] ? ((new RecurringRepository())->find((int) $tx['recurring_id'], $this->hid)['payee'] ?? null) : null,
         ];
         if ($partner) {
             $out = $cents < 0 ? $tx : $partner;
@@ -222,13 +226,22 @@ final class TransactionController extends Controller
         $this->json(['ok' => true]);
     }
 
-    /** Mehrere Buchungen auf einmal kategorisieren oder löschen */
+    /** Mehrere Buchungen auf einmal kategorisieren, einem anderen Konto zuweisen, als Fixkosten übernehmen oder löschen */
     public function bulk(): void
     {
         $ids = array_map('intval', $this->request->arr('ids'));
         $repo = new TransactionRepository();
         $action = $this->request->str('action');
+        if ($action === 'recurring') {
+            $txs = array_filter(array_map(fn ($id) => $repo->find($id, $this->hid), $ids));
+            [$n, $linked] = $this->createTemplates($txs, $this->request->str('interval'), $this->request->bool('auto_book'));
+            $this->back('/transactions', "$n Fixkosten angelegt, $linked Buchungen zugeordnet.", 'success');
+        }
         $cat = (new CategoryRepository())->validId($this->request->int('category_id'), $this->hid);
+        $target = (int) $this->request->int('account_id');
+        if ($action === 'move' && !Auth::can($target, 'book')) {
+            $this->back('/transactions', 'Bitte ein Konto wählen, auf das du buchen darfst.');
+        }
         $n = 0;
         foreach ($ids as $id) {
             $tx = $repo->find($id, $this->hid);
@@ -237,12 +250,98 @@ final class TransactionController extends Controller
             }
             if ($action === 'delete') {
                 $tx['transfer_group'] ? $repo->deleteTransferGroup($tx['transfer_group'], $this->hid) : $repo->delete($id, $this->hid);
+            } elseif ($action === 'move') {
+                // Bei Umbuchungen nur diese Seite verschieben – nie auf das Konto der Gegenseite
+                $partner = $repo->transferPartner($tx);
+                if ((int) $tx['account_id'] === $target || ($partner && (int) $partner['account_id'] === $target)) {
+                    continue;
+                }
+                $repo->moveToAccount($id, $this->hid, $target);
             } elseif (!$tx['transfer_group']) {
                 $repo->update($id, $this->hid, ['category_id' => $cat]);
+            } else {
+                continue;
             }
             $n++;
         }
-        $this->back('/transactions', $action === 'delete' ? "$n Buchungen gelöscht." : "$n Buchungen kategorisiert.", 'success');
+        $messages = ['delete' => '%d Buchungen gelöscht.', 'move' => '%d Buchungen dem neuen Konto zugewiesen.'];
+        $this->back('/transactions', sprintf($messages[$action] ?? '%d Buchungen kategorisiert.', $n), 'success');
+    }
+
+    /** Eine Buchung als Fixkosten übernehmen (aus dem Bearbeiten-Formular) */
+    public function makeRecurring(int $id): void
+    {
+        $repo = new TransactionRepository();
+        $tx = $repo->find($id, $this->hid) ?? $this->notFound();
+        Auth::authorize((int) $tx['account_id'], 'book');
+        [$n] = $this->createTemplates([$tx], $this->request->str('interval'), $this->request->bool('auto_book'));
+        $tpl = $repo->find($id, $this->hid)['recurring_id'] ?? null;
+        if (!$n || !$tpl) {
+            $this->redirect("/transactions/$id/edit", 'Die Buchung gehört bereits zu Fixkosten.', 'warning');
+        }
+        $this->redirect("/recurring/$tpl/edit", 'Als Fixkosten übernommen – bitte kurz prüfen.');
+    }
+
+    /**
+     * Legt aus Buchungen wiederkehrende Vorlagen an. Gleiche Zahlungen (Konto, Gegenkonto, Empfänger, Betrag)
+     * ergeben eine Vorlage; sie startet mit der frühesten Buchung und gilt bis zur letzten als gebucht.
+     * Die Buchungen (bei Umbuchungen beide Seiten) werden der Vorlage zugeordnet.
+     *
+     * @return array{0:int, 1:int} angelegte Vorlagen, zugeordnete Buchungen
+     */
+    private function createTemplates(array $txs, string $interval, bool $autoBook): array
+    {
+        $interval = array_key_exists($interval, RecurrenceService::STEPS) ? $interval : 'monthly';
+        $repo = new TransactionRepository();
+        $groups = [];
+        foreach ($txs as $tx) {
+            if ($tx['recurring_id'] || !Auth::can((int) $tx['account_id'], 'book')) {
+                continue;
+            }
+            $partner = $repo->transferPartner($tx);
+            if ($tx['transfer_group'] && (!$partner || !Auth::can((int) $partner['account_id'], 'book'))) {
+                continue;
+            }
+            // Umbuchung: Vorlage gehört zur abgebenden Seite
+            [$out, $in] = $partner && (float) $tx['amount'] > 0 ? [$partner, $tx] : [$tx, $partner];
+            $key = implode('|', [$out['account_id'], $in['account_id'] ?? '', mb_strtolower((string) $out['payee']), $out['amount']]);
+            $groups[$key]['out'] ??= $out;
+            $groups[$key]['to'] = $in ? (int) $in['account_id'] : null;
+            $groups[$key]['dates'][] = $tx['booking_date'];
+            $groups[$key]['ids'][] = (int) $tx['id'];
+            if ($partner) {
+                $groups[$key]['ids'][] = (int) $partner['id'];
+            }
+        }
+        $templates = new RecurringRepository();
+        $created = $linked = 0;
+        foreach ($groups as $g) {
+            sort($g['dates']);
+            $last = end($g['dates']);
+            $out = $g['out'];
+            $id = $templates->create($this->hid, [
+                'account_id'       => (int) $out['account_id'],
+                'to_account_id'    => $g['to'],
+                'category_id'      => $g['to'] ? null : $out['category_id'],
+                'amount'           => $out['amount'],
+                'payee'            => mb_substr((string) $out['payee'], 0, 190) ?: null,
+                'purpose'          => mb_substr((string) $out['purpose'], 0, 255) ?: null,
+                'interval'         => $interval,
+                'day_of_month'     => (int) substr($last, 8, 2),
+                'start_date'       => $g['dates'][0],
+                'last_booked_date' => $last,
+                'auto_book'        => $autoBook ? 1 : 0,
+                'active'           => 1,
+                'created_by'       => Auth::id(),
+            ]);
+            $linked += $repo->linkRecurring($this->hid, array_values(array_unique($g['ids'])), $id);
+            $linked += RecurrenceService::linkExisting($this->hid, $id);
+            $created++;
+        }
+        if ($created) {
+            RecurrenceService::materializeDue($this->hid);
+        }
+        return [$created, $linked];
     }
 
     /** AJAX: Kategorie-Vorschlag zu Empfänger/Verwendungszweck */

@@ -11,15 +11,23 @@ final class RecurringRepository extends Repository
         $active = $onlyActive ? 'AND r.active = 1' : '';
         return $this->many(
             'SELECT r.*, a.name AS account_name, a.color AS account_color, ta.name AS to_account_name,
-                    c.name AS category_name, c.icon AS category_icon, c.color AS category_color
+                    c.name AS category_name, c.icon AS category_icon, c.color AS category_color, ca.name AS counterpart_account_name
              FROM recurring_transactions r
              JOIN accounts a ON a.id = r.account_id
              LEFT JOIN accounts ta ON ta.id = r.to_account_id
              LEFT JOIN categories c ON c.id = r.category_id
+             LEFT JOIN recurring_transactions cp ON cp.id = r.counterpart_id
+             LEFT JOIN accounts ca ON ca.id = cp.account_id
              WHERE r.household_id = ? AND r.account_id IN (' . self::in($accountIds) . ") $active
              ORDER BY r.active DESC, r.amount > 0 DESC, ABS(r.amount) DESC",
             [$householdId, ...$accountIds]
         );
+    }
+
+    /** Aktive Vorlagen eines Haushalts ohne Rechteprüfung (für Hintergrund-Abgleiche) */
+    public function activeOfHousehold(int $householdId): array
+    {
+        return $this->many('SELECT * FROM recurring_transactions WHERE active = 1 AND household_id = ?', [$householdId]);
     }
 
     /** Alle aktiven Vorlagen aller Haushalte bzw. eines Haushalts (für automatische Buchung) */

@@ -19,8 +19,11 @@ if ($isEdit && $ref && parse_url($ref, PHP_URL_PATH) === url('/transactions')) {
 <div class="row justify-content-center">
     <div class="col-lg-8 col-xl-6">
         <?php if ($error): ?><div class="alert alert-danger"><?= e($error) ?></div><?php endif; ?>
-        <?php if ($isEdit && ($tx['source'] ?? '') === 'recurring'): ?>
-            <div class="alert alert-info small"><i class="bi bi-arrow-repeat"></i> Diese Buchung wurde aus einer <a href="<?= e(url("/recurring/{$tx['recurring_id']}/edit")) ?>">wiederkehrenden Buchung</a> erzeugt.</div>
+        <?php if ($isEdit && !empty($tx['recurring_id'])): ?>
+            <div class="alert alert-info small"><i class="bi bi-arrow-repeat"></i>
+                <?= ($tx['source'] ?? '') === 'recurring' ? 'Diese Buchung wurde aus den Fixkosten' : 'Diese Buchung gehört zu den Fixkosten' ?>
+                <a href="<?= e(url("/recurring/{$tx['recurring_id']}/edit")) ?>"><?= e($tx['recurring_payee'] ?: 'wiederkehrende Buchung') ?></a><?= ($tx['source'] ?? '') === 'recurring' ? ' erzeugt.' : '.' ?>
+            </div>
         <?php endif; ?>
 
         <form method="post" action="<?= e($action) ?>" x-data="txForm(<?= e(json_encode($init)) ?>)" class="card">
@@ -133,6 +136,29 @@ if ($isEdit && $ref && parse_url($ref, PHP_URL_PATH) === url('/transactions')) {
                 <a href="<?= e(url('/transactions')) ?>" class="btn btn-link">Abbrechen</a>
             </div>
         </form>
+
+        <?php if ($isEdit && empty($tx['recurring_id'])): ?>
+            <form method="post" action="<?= e(url("/transactions/{$tx['id']}/recurring")) ?>" class="card mt-3">
+                <?= csrf_field() ?>
+                <div class="card-body">
+                    <h6 class="card-title"><i class="bi bi-arrow-repeat"></i> Als Fixkosten übernehmen</h6>
+                    <p class="small text-body-secondary mb-2">Legt eine wiederkehrende Buchung mit Betrag, Konto und Kategorie dieser Buchung an (ab dem nächsten Termin). Vorhandene passende Buchungen werden als Fixkosten gekennzeichnet.</p>
+                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                        <select class="form-select w-auto" name="interval" aria-label="Intervall">
+                            <?php foreach (['monthly', 'quarterly', 'halfyearly', 'yearly'] as $i): ?>
+                                <option value="<?= $i ?>"><?= e(interval_label($i)) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <div class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" role="switch" id="rec_auto_book" name="auto_book" value="1" <?= checked(($tx['source'] ?? '') !== 'csv') ?>>
+                            <label class="form-check-label" for="rec_auto_book">automatisch buchen</label>
+                        </div>
+                        <button class="btn btn-outline-primary">Übernehmen</button>
+                    </div>
+                    <div class="form-text">Aus = nur Prognose, z. B. wenn die Buchung jeden Monat per CSV-Import kommt.</div>
+                </div>
+            </form>
+        <?php endif; ?>
 
         <?php if ($isEdit): ?>
             <form method="post" action="<?= e(url("/transactions/{$tx['id']}/delete")) ?>" class="mt-3 text-end" onsubmit="return HB.confirmSubmit(this, 'Buchung löschen?')">

@@ -103,7 +103,7 @@ Header `X-CSRF-Token`); `HB.post()` in `public/assets/js/app.js` setzt den Heade
 
 ## Status / mögliche nächste Schritte
 
-Alle geplanten Module sind umgesetzt und getestet (43 PHPUnit-Tests; Browser-Durchlauf Foto → lokale OCR → Speichern).
+Alle geplanten Module sind umgesetzt und getestet (47 PHPUnit-Tests; Browser-Durchlauf Foto → lokale OCR → Speichern).
 Noch nicht real getestet: Kamera auf echtem Smartphone (braucht HTTPS), KI-Erkennung mit echtem API-Schlüssel.
 Ideen: Budgets je Kategorie mit Warnung, Sparziele, Bearbeiten von CSV-Profilen in der Oberfläche,
 Konten-Export/Backup, E-Mail-Einladung für Familienmitglieder, Zwei-Faktor-Login.

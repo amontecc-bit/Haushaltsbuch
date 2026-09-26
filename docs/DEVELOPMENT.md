@@ -53,6 +53,17 @@ Neue Stichwörter in `CategoryKeywords` (Schlüssel = Kategoriename aus dem Stan
 geteilt durch die verfügbaren Monate, gleichmäßig auf Tage verteilt. Kreditraten fließen nur ein, wenn sie als
 Fixkosten angelegt sind (Button auf der Kreditseite).
 
+**Fixkosten ↔ Buchungen:** `transactions.recurring_id` kennzeichnet eine Buchung als Fixkosten (Liste, Filter
+„Fixkosten“) und nimmt sie aus dem variablen Ø der Prognose. `RecurrenceService::linkExisting()` ordnet vorhandene
+Buchungen ohne Vorlage zu: gleiches Konto + Betrag, Datum ±5 Tage um einen Termin **und** passender Empfänger
+(Vorlage oder bereits zugeordnete Buchungen; nur Betrag wäre zu unscharf). Läuft täglich mit `materializeDue()` sowie
+nach dem Speichern einer Vorlage. Wird eine Vorlage wieder automatisch gebucht (nur Prognose/pausiert → aktiv),
+setzt der Controller `last_booked_date` auf gestern, damit keine alten Termine nachgebucht werden.
+**Gegeneintrag:** zwei Vorlagen mit umgekehrtem Betrag auf verschiedenen Konten, gegenseitig über `counterpart_id`
+verknüpft (Migration 003); beim Bearbeiten werden Betrag, Bezeichnung, Termine und „Aktiv“ optional übertragen.
+Monatssummen der Fixkosten-Übersicht: `RecurrenceService::monthlyTotals()` – mit Kontofilter zählen Umbuchungen über
+die Grenze der gewählten Konten als Einnahme/Ausgabe.
+
 ## Tests
 
 - `tests/Unit/*Test.php` decken Money, Recurrence, CSV-Import (Fixtures Sparkasse Windows-1252, ING mit Vorspann,

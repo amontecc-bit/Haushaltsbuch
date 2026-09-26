@@ -8,7 +8,7 @@ final class TransactionRepository extends Repository
 {
     /**
      * Gefilterte Liste.
-     * $f: account_id, category_id ('none' = ohne Kategorie), from, to, q, type (income|expense), user_id
+     * $f: account_id, account_ids (Mehrfachauswahl), category_id ('none' = ohne Kategorie), from, to, q, type (income|expense|transfer|fixed), user_id
      */
     public function search(int $householdId, array $accountIds, array $f, int $limit = 50, int $offset = 0): array
     {
@@ -18,10 +18,11 @@ final class TransactionRepository extends Repository
         return $this->many(
             "SELECT t.*, a.name AS account_name, a.color AS account_color,
                     c.name AS category_name, c.icon AS category_icon, c.color AS category_color, pc.name AS category_parent,
-                    ta.name AS transfer_account_name, u.name AS user_name,
+                    ta.name AS transfer_account_name, u.name AS user_name, rt.payee AS recurring_payee, rt.interval AS recurring_interval,
                     (SELECT p.id FROM purchases p WHERE p.transaction_id = t.id LIMIT 1) AS purchase_id
              FROM transactions t
              JOIN accounts a ON a.id = t.account_id
+             LEFT JOIN recurring_transactions rt ON rt.id = t.recurring_id
              LEFT JOIN categories c ON c.id = t.category_id
              LEFT JOIN categories pc ON pc.id = c.parent_id
              LEFT JOIN users u ON u.id = t.created_by
@@ -38,10 +39,17 @@ final class TransactionRepository extends Repository
     public function summary(int $householdId, array $accountIds, array $f): array
     {
         [$where, $params] = $this->filterSql($householdId, $accountIds, $f);
+        // Umbuchungen zählen nur, wenn die Gegenseite außerhalb der gewählten Konten liegt (sonst bleibt das Geld drin)
+        $counts = 't.transfer_group IS NULL';
+        $filterIds = array_map('intval', $f['account_ids'] ?? []);
+        if ($filterIds) {
+            $counts = '(t.transfer_group IS NULL OR EXISTS (SELECT 1 FROM transactions p WHERE p.transfer_group = t.transfer_group
+                        AND p.id <> t.id AND p.account_id NOT IN (' . implode(',', $filterIds) . ')))';
+        }
         $row = $this->one(
             "SELECT COUNT(*) AS cnt,
-                    COALESCE(SUM(CASE WHEN t.amount > 0 AND t.transfer_group IS NULL THEN t.amount END), 0) AS income,
-                    COALESCE(SUM(CASE WHEN t.amount < 0 AND t.transfer_group IS NULL THEN t.amount END), 0) AS expense
+                    COALESCE(SUM(CASE WHEN t.amount > 0 AND $counts THEN t.amount END), 0) AS income,
+                    COALESCE(SUM(CASE WHEN t.amount < 0 AND $counts THEN t.amount END), 0) AS expense
              FROM transactions t WHERE $where",
             $params
         );
@@ -56,6 +64,10 @@ final class TransactionRepository extends Repository
         if (!empty($f['account_id'])) {
             $where[] = 't.account_id = ?';
             $params[] = (int) $f['account_id'];
+        }
+        if (!empty($f['account_ids'])) {
+            $where[] = 't.account_id IN (' . self::in($f['account_ids']) . ')';
+            array_push($params, ...array_map('intval', $f['account_ids']));
         }
         if (($f['category_id'] ?? '') === 'none') {
             $where[] = 't.category_id IS NULL AND t.transfer_group IS NULL';
@@ -78,6 +90,8 @@ final class TransactionRepository extends Repository
             $where[] = 't.amount < 0';
         } elseif (($f['type'] ?? '') === 'transfer') {
             $where[] = 't.transfer_group IS NOT NULL';
+        } elseif (($f['type'] ?? '') === 'fixed') {
+            $where[] = 't.recurring_id IS NOT NULL';
         }
         if (!empty($f['user_id'])) {
             $where[] = 't.created_by = ?';
@@ -111,6 +125,13 @@ final class TransactionRepository extends Repository
         $this->exec('DELETE FROM transactions WHERE id = ? AND household_id = ?', [$id, $householdId]);
     }
 
+    /** Buchung (eine Seite) auf ein anderes Konto legen; ein verknüpfter Einkauf zieht mit */
+    public function moveToAccount(int $id, int $householdId, int $accountId): void
+    {
+        $this->exec('UPDATE transactions SET account_id = ? WHERE id = ? AND household_id = ?', [$accountId, $id, $householdId]);
+        $this->exec('UPDATE purchases SET account_id = ? WHERE transaction_id = ? AND household_id = ?', [$accountId, $id, $householdId]);
+    }
+
     public function transferPartner(array $tx): ?array
     {
         if (!$tx['transfer_group']) {
@@ -122,6 +143,38 @@ final class TransactionRepository extends Repository
     public function deleteTransferGroup(string $group, int $householdId): void
     {
         $this->exec('DELETE FROM transactions WHERE transfer_group = ? AND household_id = ?', [$group, $householdId]);
+    }
+
+    /** Buchungen ohne Vorlage, die zu einer Vorlage passen könnten (Konto, Betrag, ab Start/bis Ende) */
+    public function unlinkedForTemplate(int $householdId, array $tpl): array
+    {
+        return $this->many(
+            'SELECT id, booking_date, payee FROM transactions
+             WHERE household_id = ? AND account_id = ? AND amount = ? AND recurring_id IS NULL AND transfer_group IS NULL
+               AND booking_date >= DATE_SUB(?, INTERVAL 5 DAY) AND booking_date <= DATE_ADD(COALESCE(?, CURDATE()), INTERVAL 5 DAY)',
+            [$householdId, $tpl['account_id'], $tpl['amount'], $tpl['start_date'], $tpl['end_date'] ?: null]
+        );
+    }
+
+    /** @return string[] Empfänger der bereits einer Vorlage zugeordneten Buchungen */
+    public function payeesForRecurring(int $recurringId): array
+    {
+        return array_column($this->many(
+            "SELECT DISTINCT payee FROM transactions WHERE recurring_id = ? AND payee IS NOT NULL AND payee <> '' LIMIT 20",
+            [$recurringId]
+        ), 'payee');
+    }
+
+    /** @param int[] $ids */
+    public function linkRecurring(int $householdId, array $ids, int $recurringId): int
+    {
+        if (!$ids) {
+            return 0;
+        }
+        return $this->exec(
+            'UPDATE transactions SET recurring_id = ? WHERE household_id = ? AND id IN (' . self::in($ids) . ')',
+            [$recurringId, $householdId, ...$ids]
+        );
     }
 
     public function hashExists(int $accountId, string $hash): bool

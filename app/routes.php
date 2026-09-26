@@ -44,6 +44,7 @@ $router->get('/transactions/{id}/edit', [TransactionController::class, 'edit']);
 $router->post('/transactions/{id}', [TransactionController::class, 'update']);
 $router->post('/transactions/{id}/delete', [TransactionController::class, 'delete']);
 $router->post('/transactions/{id}/category', [TransactionController::class, 'setCategory']);
+$router->post('/transactions/{id}/recurring', [TransactionController::class, 'makeRecurring']);
 $router->post('/transactions/bulk', [TransactionController::class, 'bulk']);
 $router->post('/transactions/suggest', [TransactionController::class, 'suggest']);
 
@@ -54,6 +55,7 @@ $router->post('/recurring', [RecurringController::class, 'store']);
 $router->get('/recurring/{id}/edit', [RecurringController::class, 'edit']);
 $router->post('/recurring/{id}', [RecurringController::class, 'update']);
 $router->post('/recurring/{id}/delete', [RecurringController::class, 'delete']);
+$router->post('/recurring/bulk', [RecurringController::class, 'bulk']);
 
 // CSV-Import
 $router->get('/import', [ImportController::class, 'index']);

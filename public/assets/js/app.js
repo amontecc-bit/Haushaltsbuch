@@ -101,7 +101,18 @@ window.HB = (function () {
     /** Achsenbeschriftung in Euro ohne Nachkommastellen */
     const euroTick = (v) => HB.num(v, 0) + ' €';
 
-    return { url, post, parseAmount, money, num, toggleTheme, confirmSubmit, chartDefaults, series, otherColor, surface, euroTick };
+    /** Alpine-Baustein für Listen mit Mehrfachauswahl und „Alle auswählen“ (ids als Strings wie in den Checkboxen) */
+    function selection(ids) {
+        const all = (ids || []).map(String);
+        return {
+            selected: [],
+            allSelected() { return all.length > 0 && this.selected.length === all.length; },
+            someSelected() { return this.selected.length > 0 && this.selected.length < all.length; },
+            toggleAll() { this.selected = this.allSelected() ? [] : all.slice(); },
+        };
+    }
+
+    return { url, post, parseAmount, money, num, toggleTheme, confirmSubmit, chartDefaults, series, otherColor, surface, euroTick, selection };
 })();
 
 /* Service Worker für PWA-Installation */

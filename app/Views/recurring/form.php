@@ -3,11 +3,15 @@ use App\Core\View;
 
 $isEdit = !empty($tpl['id']);
 $action = $isEdit ? url("/recurring/{$tpl['id']}") : url('/recurring');
+// Gegeneintrag: standardmäßig ein anderes Konto als das der Vorlage vorschlagen
+$mainAccount = (int) ($tpl['account_id'] ?? $accounts[0]['id']);
+$counterAccount = $request->int('counter_account_id')
+    ?? (current(array_filter(array_column($accounts, 'id'), fn ($id) => (int) $id !== $mainAccount)) ?: null);
 ?>
 <div class="row justify-content-center">
     <div class="col-lg-8 col-xl-6">
         <?php if ($error): ?><div class="alert alert-danger"><?= e($error) ?></div><?php endif; ?>
-        <form method="post" action="<?= e($action) ?>" class="card" x-data="{ kind: '<?= e($tpl['kind']) ?>' }">
+        <form method="post" action="<?= e($action) ?>" class="card" x-data="{ kind: '<?= e($tpl['kind']) ?>', counter: <?= $request->bool('counter') ? 'true' : 'false' ?> }">
             <?= csrf_field() ?>
             <input type="hidden" name="kind" :value="kind">
             <div class="card-body">
@@ -69,6 +73,39 @@ $action = $isEdit ? url("/recurring/{$tpl['id']}") : url('/recurring');
                     <label class="form-label" for="purpose">Verwendungszweck / Notiz</label>
                     <input class="form-control" id="purpose" name="purpose" value="<?= e($tpl['purpose']) ?>">
                 </div>
+                <?php if ($counterpart): ?>
+                    <div class="alert alert-light border small mb-3" x-show="kind !== 'transfer'">
+                        <i class="bi bi-arrow-left-right"></i>
+                        Gegeneintrag: <a href="<?= e(url("/recurring/{$counterpart['id']}/edit")) ?>"><?= e($counterpart['payee'] ?: 'Eintrag') ?></a>
+                        auf <strong><?= e($counterpart['account_name']) ?></strong> (<?= money($counterpart['amount']) ?>)
+                        <div class="form-check mt-1">
+                            <input class="form-check-input" type="checkbox" id="counter_sync" name="counter_sync" value="1" checked>
+                            <label class="form-check-label" for="counter_sync">Änderungen an Betrag, Bezeichnung, Terminen und „Aktiv“ auf den Gegeneintrag übertragen</label>
+                        </div>
+                    </div>
+                <?php else: ?>
+                    <div class="mb-3" x-show="kind !== 'transfer'">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" role="switch" id="counter" name="counter" value="1" x-model="counter">
+                            <label class="form-check-label" for="counter">Gegeneintrag auf anderem Konto anlegen</label>
+                            <div class="form-text">Legt denselben Betrag mit umgekehrtem Vorzeichen auf einem anderen Konto an – z. B. Haushaltsgeld: Ausgabe hier, Einnahme auf dem Haushaltskonto.</div>
+                        </div>
+                        <div class="row g-2 mt-1" x-show="counter" x-cloak>
+                            <div class="col-sm-6">
+                                <label class="form-label" for="counter_account_id">Konto des Gegeneintrags</label>
+                                <select class="form-select" id="counter_account_id" name="counter_account_id">
+                                    <?php foreach ($accounts as $a): ?>
+                                        <option value="<?= (int) $a['id'] ?>" <?= selected($a['id'], $counterAccount) ?>><?= e($a['name']) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="col-sm-6">
+                                <label class="form-label" for="counter_category_id">Kategorie des Gegeneintrags</label>
+                                <?= View::partial('partials/category_select', ['categories' => $categories, 'name' => 'counter_category_id', 'selected' => $request->int('counter_category_id'), 'id' => 'counter_category_id']) ?>
+                            </div>
+                        </div>
+                    </div>
+                <?php endif; ?>
                 <div class="form-check form-switch mb-2">
                     <input class="form-check-input" type="checkbox" role="switch" id="auto_book" name="auto_book" value="1" <?= checked($tpl['auto_book']) ?>>
                     <label class="form-check-label" for="auto_book">Automatisch buchen, wenn fällig</label>
