@@ -1,8 +1,13 @@
 Options -Indexes
+DirectoryIndex index.php
 RewriteEngine On
+# Basis-URL selbst ermitteln statt RewriteBase: ohne sie hängen manche Hoster (z. B. IONOS)
+# den physischen Pfad vor "index.php" → 500er bei allen Routen außer "/"
+RewriteCond %{REQUEST_URI}::$0 ^(/.+)/(.*)::\2$
+RewriteRule .* - [E=BASE:%1]
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule ^ index.php [L,QSA]
+RewriteRule ^ %{ENV:BASE}/index.php [L,QSA]
 
 <IfModule mod_headers.c>
     Header always set X-Content-Type-Options "nosniff"

@@ -1,7 +1,10 @@
 /vendor/
 /.env
+/.env.*
+!/.env.example
 /storage/uploads/*
 /storage/logs/*
 /storage/cache/*
 !/storage/**/.gitkeep
 /.phpunit.cache/
+config/config.php

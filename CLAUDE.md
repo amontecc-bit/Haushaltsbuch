@@ -26,7 +26,8 @@ for f in $(find app bin config public tests -name "*.php"); do php -l $f >/dev/n
 C:\xampp8\mysql\bin\mysql.exe -uroot haushaltsbuch   # DB-Konsole (root ohne Passwort)
 ```
 
-DB komplett zurücksetzen: `mysql -uroot -e "DROP DATABASE haushaltsbuch;" && php bin/migrate.php` – danach führt
+DB komplett zurücksetzen: `php bin/reset.php` (Rückfrage mit DB-Namen, `--yes` ohne Rückfrage, `--keep-uploads`
+behält Belege; löscht alle Tabellen + `storage/uploads`, migriert neu) – danach führt
 `/setup` durch die Ersteinrichtung. Fehlerlog: `storage/logs/php-error.log`.
 Node.js ist **nicht** installiert; JS lässt sich nur im Browser prüfen (siehe `docs/DEVELOPMENT.md`).
 
@@ -94,6 +95,10 @@ Header `X-CSRF-Token`); `HB.post()` in `public/assets/js/app.js` setzt den Heade
   (die Test-PDF enthält Byte-Offsets, die CSVs absichtlich Windows-1252).
 - **Tesseract-Sprachdaten** `deu.traineddata.gz` dürfen nicht mit `Content-Encoding: gzip` ausgeliefert werden
   (`public/.htaccess` regelt das).
+- **`public/.htaccess` ohne `RewriteBase`:** Das relative Ziel `index.php` führte bei IONOS zu einem Apache-500er bei
+  allen Routen außer `/` (Setup/Login nicht erreichbar). Die Basis wird jetzt per `%{ENV:BASE}` selbst ermittelt
+  (funktioniert im Domain-Root, im Unterordner und unter XAMPP) – nicht auf `RewriteRule ^ index.php` zurückbauen.
+- **Server-Zugangsdaten** (`.env`, `.env.ionos` o. ä.) nie committen – `.gitignore` schließt `/.env.*` außer `.env.example` aus.
 - **Bash-Heredocs mit viel PHP-Quoting** sind fehleranfällig – PHP-Dateien lieber mit dem Write-Tool schreiben.
 - **Lokale DB `haushaltsbuch` enthält echte Daten der Familie** – nie zurücksetzen oder mit Testdaten füllen.
   Tests gegen eine Kopie (`mysqldump haushaltsbuch | mysql haushaltsbuch_test`), siehe `docs/DEVELOPMENT.md`.
