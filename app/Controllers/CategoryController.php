@@ -85,6 +85,7 @@ final class CategoryController extends Controller
             'type'      => $type,
             'icon'      => in_array($r->str('icon'), self::ICONS, true) ? $r->str('icon') : 'tag',
             'color'     => preg_match('/^#[0-9a-f]{6}$/i', $r->str('color')) ? $r->str('color') : '#6c757d',
+            'exclude_from_forecast' => $r->str('exclude_from_forecast') === '1' ? 1 : 0,
         ];
     }
 

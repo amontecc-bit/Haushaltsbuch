@@ -8,10 +8,14 @@ use App\Core\Database;
 use PDO;
 
 /**
- * Auswertungen über Buchungen und Einkaufsposten. Umbuchungen werden nie als Einnahme/Ausgabe gezählt.
+ * Auswertungen über Buchungen und Einkaufsposten. Umbuchungen zählen nur bei Filter auf ein einzelnes Konto als
+ * Einnahme/Ausgabe (dort fließt Geld tatsächlich zu oder ab); über alle Konten heben sie sich auf.
  */
 final class ReportService
 {
+    /** Pseudo-Kategorie-ID für Umbuchungen in den Kategorie-Auswertungen */
+    public const TRANSFER_ID = -2;
+
     private PDO $db;
 
     public function __construct(private readonly int $householdId, private readonly array $accountIds)
@@ -33,14 +37,17 @@ final class ReportService
 
     /**
      * Gemeinsamer Filter für Buchungen (Alias t): Haushalt, sichtbare Konten, optional ein Konto und eine Person,
-     * Zeitraum; Umbuchungen sind immer ausgeschlossen.
+     * Zeitraum; Umbuchungen nur bei gewähltem Konto (sonst ausgeschlossen).
      * @return array{0:string, 1:array}
      */
     private function scope(string $from, string $to, ?int $accountId = null, ?int $userId = null): array
     {
         $accIds = $accountId ? array_values(array_intersect($this->accountIds, [$accountId])) : $this->accountIds;
         $in = $accIds ? implode(',', array_fill(0, count($accIds), '?')) : 'NULL';
-        $sql = "t.household_id = ? AND t.account_id IN ($in) AND t.transfer_group IS NULL AND t.booking_date BETWEEN ? AND ?";
+        $sql = "t.household_id = ? AND t.account_id IN ($in) AND t.booking_date BETWEEN ? AND ?";
+        if (!$accountId) {
+            $sql .= ' AND t.transfer_group IS NULL';
+        }
         $params = [$this->householdId, ...$accIds, $from, $to];
         if ($userId) {
             $sql .= ' AND t.created_by = ?';
@@ -76,7 +83,7 @@ final class ReportService
         $txWhere = "$scope AND t.amount $sign";
 
         // Teil A: Buchungen (ggf. ohne verknüpfte Einkäufe)
-        $parts = ["SELECT t.category_id AS cid, t.amount AS amt, 1 AS cnt FROM transactions t WHERE $txWhere" . ($splitPurchases && $type === 'expense' ? " AND NOT $linked" : '')];
+        $parts = ["SELECT {$this->cid()} AS cid, t.amount AS amt, 1 AS cnt FROM transactions t WHERE $txWhere" . ($splitPurchases && $type === 'expense' ? " AND NOT $linked" : '')];
         $params = $base;
 
         if ($splitPurchases && $type === 'expense') {
@@ -85,16 +92,16 @@ final class ReportService
                         FROM transactions t JOIN purchases p ON p.transaction_id = t.id JOIN purchase_items i ON i.purchase_id = p.id
                         WHERE $txWhere";
             // Teil C: Differenz zwischen Buchungsbetrag und Summe der Posten (Rundung, Pfand, Rabatte ...)
-            $parts[] = "SELECT t.category_id AS cid, t.amount + (SELECT COALESCE(SUM(i.total_price), 0) FROM purchases p JOIN purchase_items i ON i.purchase_id = p.id WHERE p.transaction_id = t.id) AS amt, 1 AS cnt
+            $parts[] = "SELECT {$this->cid()} AS cid, t.amount + (SELECT COALESCE(SUM(i.total_price), 0) FROM purchases p JOIN purchase_items i ON i.purchase_id = p.id WHERE p.transaction_id = t.id) AS amt, 1 AS cnt
                         FROM transactions t WHERE $txWhere AND $linked";
             $params = [...$base, ...$base, ...$base];
         }
 
         $union = implode(' UNION ALL ', $parts);
         if ($parentId === null) {
-            $sql = "SELECT COALESCE(c.parent_id, c.id) AS id, SUM(x.amt) AS total, SUM(x.cnt) AS cnt
+            $sql = "SELECT {$this->groupId('x.cid')} AS id, SUM(x.amt) AS total, SUM(x.cnt) AS cnt
                     FROM ($union) x LEFT JOIN categories c ON c.id = x.cid
-                    GROUP BY COALESCE(c.parent_id, c.id)";
+                    GROUP BY 1";
         } else {
             $sql = "SELECT c.id AS id, SUM(x.amt) AS total, SUM(x.cnt) AS cnt
                     FROM ($union) x JOIN categories c ON c.id = x.cid
@@ -109,6 +116,11 @@ final class ReportService
         foreach ($rows as $r) {
             $total = abs((float) $r['total']);
             if ($total < 0.005) {
+                continue;
+            }
+            if ((int) $r['id'] === self::TRANSFER_ID) {
+                $out[] = ['id' => self::TRANSFER_ID, 'name' => 'Umbuchungen', 'color' => '#6c757d', 'icon' => 'arrow-left-right',
+                          'has_children' => false, 'total' => $total, 'count' => (int) $r['cnt']];
                 continue;
             }
             $c = $r['id'] ? ($cats[(int) $r['id']] ?? null) : null;
@@ -153,7 +165,7 @@ final class ReportService
     {
         [$where, $params] = $this->scope($from, $to, $accountId, $userId);
         $rows = $this->rows(
-            "SELECT DATE_FORMAT(t.booking_date, '%Y-%m') AS ym, COALESCE(c.parent_id, c.id) AS cid, SUM(-t.amount) AS total
+            "SELECT DATE_FORMAT(t.booking_date, '%Y-%m') AS ym, {$this->groupId($this->cid())} AS cid, SUM(-t.amount) AS total
              FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
              WHERE $where AND t.amount < 0
              GROUP BY ym, cid",
@@ -177,8 +189,8 @@ final class ReportService
         foreach ($series as $cid => $s) {
             $c = $cats[$cid] ?? null;
             $out[] = [
-                'label' => $cid === -1 ? 'Übrige' : ($c['name'] ?? 'Ohne Kategorie'),
-                'color' => $cid === -1 ? '#ced4da' : ($c['color'] ?? '#adb5bd'),
+                'label' => match ($cid) { -1 => 'Übrige', self::TRANSFER_ID => 'Umbuchungen', default => $c['name'] ?? 'Ohne Kategorie' },
+                'color' => match ($cid) { -1 => '#ced4da', self::TRANSFER_ID => '#6c757d', default => $c['color'] ?? '#adb5bd' },
                 'data'  => array_map(fn ($ym) => round($s['data'][$ym] ?? 0, 2), $months),
                 'sum'   => array_sum($s['data']),
             ];
@@ -273,6 +285,18 @@ final class ReportService
              ORDER BY p.purchase_date",
             [$this->householdId, $productId, ...$this->accountIds]
         );
+    }
+
+    /** Kategorie einer Buchung (Alias t); Umbuchungen bekommen die Pseudo-ID TRANSFER_ID */
+    private function cid(): string
+    {
+        return 'CASE WHEN t.transfer_group IS NOT NULL THEN ' . self::TRANSFER_ID . ' ELSE t.category_id END';
+    }
+
+    /** Hauptkategorie zu $cidExpr (Join auf categories c); Umbuchungen behalten ihre Pseudo-ID */
+    private function groupId(string $cidExpr): string
+    {
+        return "CASE WHEN $cidExpr = " . self::TRANSFER_ID . ' THEN ' . self::TRANSFER_ID . ' ELSE COALESCE(c.parent_id, c.id) END';
     }
 
     /** @return array<int, array{name:string, color:string, icon:string, parent_id:?int, has_children:bool}> */

@@ -14,8 +14,9 @@ use DateTimeImmutable;
  * Prognose der Kontostände:
  *   Startsaldo heute
  * + künftige Termine aller aktiven wiederkehrenden Buchungen (inkl. Kreditraten, Umbuchungen)
- * + durchschnittlicher variabler Saldo pro Monat aus den letzten N vollen Monaten
- *   (ohne Daueraufträge und Umbuchungen, damit nichts doppelt zählt), gleichmäßig auf die Tage verteilt.
+ * + variabler Saldo pro Monat, gleichmäßig auf die Tage verteilt: je Konto entweder der Ø der letzten N vollen Monate
+ *   (ohne Daueraufträge, Umbuchungen, erkannte Umbuchungspaare und ausgeklammerte Kategorien) oder – in einem
+ *   Szenario – ein von Hand festgelegter Wert.
  */
 final class ForecastService
 {
@@ -24,9 +25,11 @@ final class ForecastService
     }
 
     /**
-     * @return array{accounts:array, dates:string[], series:array<int,float[]>, total:float[], events:array, variable:array<int,float>, min:array}
+     * @param array<int,float>|null $manual Szenario: von Hand festgelegter variabler Monatssaldo je Konto (Euro)
+     * @return array{accounts:array, dates:string[], series:array<int,float[]>, total:float[], events:array,
+     *               variable:array<int,float>, computed:array<int,float>, manual:array<int,float>, baseline:?float[], breakdown:array, min:array}
      */
-    public function run(int $months = 12, int $avgMonths = 6, ?string $today = null): array
+    public function run(int $months = 12, int $avgMonths = 6, ?string $today = null, ?array $manual = null): array
     {
         $today ??= date('Y-m-d');
         $end = (new DateTimeImmutable($today))->modify("+$months months")->format('Y-m-d');
@@ -42,10 +45,33 @@ final class ForecastService
         }
 
         $events = $this->futureEvents($ids, $today, $end);
-        $variable = $this->variableAverages($ids, $avgMonths, $today);
-        $projection = self::project($start, $events, $variable, $today, $end);
+        $variable = $this->variable($ids, $avgMonths, $today);
+        $manual = array_intersect_key($manual ?? [], array_flip($ids));
+        $effective = self::effectiveVariable($ids, $variable['averages'], $manual);
+        $projection = self::project($start, $events, $effective, $today, $end);
+        // Vergleichslinie „nur berechneter Ø“, wenn das Szenario etwas ändert
+        $baseline = $manual && $effective != self::effectiveVariable($ids, $variable['averages'], [])
+            ? self::project($start, $events, $variable['averages'], $today, $end)['total']
+            : null;
 
-        return ['accounts' => $accounts, 'events' => $events, 'variable' => $variable] + $projection;
+        return ['accounts' => $accounts, 'events' => $events, 'variable' => $effective, 'computed' => $variable['averages'],
+                'manual' => $manual, 'baseline' => $baseline, 'breakdown' => $variable['breakdown']] + $projection;
+    }
+
+    /**
+     * Variabler Monatssaldo je Konto: Handwert, sonst berechneter Ø, sonst 0.
+     * @param int[] $ids
+     * @param array<int,float> $computed
+     * @param array<int,float> $manual
+     * @return array<int,float>
+     */
+    public static function effectiveVariable(array $ids, array $computed, array $manual): array
+    {
+        $out = [];
+        foreach ($ids as $id) {
+            $out[$id] = round((float) ($manual[$id] ?? $computed[$id] ?? 0), 2);
+        }
+        return $out;
     }
 
     /**
@@ -141,30 +167,94 @@ final class ForecastService
      */
     public function variableAverages(array $ids, int $avgMonths, string $today): array
     {
+        return $this->variable($ids, $avgMonths, $today)['averages'];
+    }
+
+    /**
+     * Variabler Ø je Konto plus Aufschlüsselung nach Hauptkategorie und nach nicht gezählten Beträgen.
+     * Nicht variabel sind: Fixkosten (recurring_id), Umbuchungen (transfer_group), Buchungen in Kategorien mit
+     * „in Prognose ausklammern“ (auch über die Hauptkategorie) und erkannte Umbuchungspaare aus dem Import:
+     * Gegenbuchung mit umgekehrtem Betrag auf einem anderen Prognose-Konto, höchstens 3 Tage auseinander,
+     * selbst weder Umbuchung noch Fixkosten (sonst würde sie – z. B. zusätzlich zu einer Fixkosten-Umbuchung – doppelt zählen).
+     * @return array{averages: array<int,float>, breakdown: array<int, array{categories: array, excluded: array<string,float>}>}
+     */
+    private function variable(array $ids, int $avgMonths, string $today): array
+    {
         if (!$ids || $avgMonths < 1) {
-            return [];
+            return ['averages' => [], 'breakdown' => []];
         }
         $firstOfThisMonth = substr($today, 0, 7) . '-01';
         $windowStart = (new DateTimeImmutable($firstOfThisMonth))->modify("-$avgMonths months")->format('Y-m-d');
         $windowEnd = (new DateTimeImmutable($firstOfThisMonth))->modify('-1 day')->format('Y-m-d');
         $in = implode(',', array_fill(0, count($ids), '?'));
-        $st = Database::connection()->prepare(
-            "SELECT account_id,
-                    SUM(CASE WHEN recurring_id IS NULL AND transfer_group IS NULL AND booking_date BETWEEN ? AND ? THEN amount ELSE 0 END) AS var_sum,
-                    MIN(booking_date) AS first_date
-             FROM transactions WHERE household_id = ? AND account_id IN ($in)
-             GROUP BY account_id"
-        );
-        $st->execute([$windowStart, $windowEnd, $this->householdId, ...$ids]);
-        $out = [];
+        $db = Database::connection();
+
+        $st = $db->prepare("SELECT account_id, MIN(booking_date) AS first_date FROM transactions
+                            WHERE household_id = ? AND account_id IN ($in) GROUP BY account_id");
+        $st->execute([$this->householdId, ...$ids]);
+        $months = [];
         foreach ($st->fetchAll() as $r) {
             $first = max($r['first_date'], $windowStart);
             if ($first > $windowEnd) {
                 continue; // noch kein voller Monat Historie
             }
-            $monthsAvailable = count(ReportService::monthRange($first, $windowEnd));
-            $out[(int) $r['account_id']] = round((float) $r['var_sum'] / max(1, min($avgMonths, $monthsAvailable)), 2);
+            $months[(int) $r['account_id']] = max(1, min($avgMonths, count(ReportService::monthRange($first, $windowEnd))));
         }
-        return $out;
+
+        $st = $db->prepare(
+            "SELECT t.account_id, COALESCE(c.parent_id, c.id) AS cid,
+                    CASE WHEN t.recurring_id IS NOT NULL THEN 'fixed'
+                         WHEN t.transfer_group IS NOT NULL THEN 'transfer'
+                         WHEN EXISTS (SELECT 1 FROM transactions o
+                                      WHERE o.household_id = t.household_id AND o.account_id IN ($in) AND o.account_id <> t.account_id
+                                        AND o.amount = -t.amount AND o.transfer_group IS NULL AND o.recurring_id IS NULL
+                                        AND o.booking_date BETWEEN t.booking_date - INTERVAL 3 DAY AND t.booking_date + INTERVAL 3 DAY) THEN 'pair'
+                         WHEN c.exclude_from_forecast = 1 OR p.exclude_from_forecast = 1 THEN 'category'
+                         ELSE 'variable' END AS kind,
+                    SUM(t.amount) AS total
+             FROM transactions t
+             LEFT JOIN categories c ON c.id = t.category_id
+             LEFT JOIN categories p ON p.id = c.parent_id
+             WHERE t.household_id = ? AND t.account_id IN ($in) AND t.booking_date BETWEEN ? AND ? AND t.amount <> 0
+             GROUP BY t.account_id, cid, kind"
+        );
+        $st->execute([...$ids, $this->householdId, ...$ids, $windowStart, $windowEnd]);
+
+        $cats = [];
+        foreach ($db->query('SELECT id, name, color FROM categories WHERE household_id = ' . (int) $this->householdId) as $c) {
+            $cats[(int) $c['id']] = $c;
+        }
+        $averages = [];
+        $breakdown = [];
+        foreach ($st->fetchAll() as $r) {
+            $acc = (int) $r['account_id'];
+            if (!isset($months[$acc]) || $r['kind'] === 'transfer') {
+                continue;
+            }
+            $avg = (float) $r['total'] / $months[$acc];
+            $breakdown[$acc] ??= ['categories' => [], 'excluded' => []];
+            if ($r['kind'] === 'variable') {
+                $averages[$acc] = ($averages[$acc] ?? 0) + $avg;
+                $cid = (int) $r['cid'];
+                $breakdown[$acc]['categories'][$cid] ??= [
+                    'id'    => $cid ?: null,
+                    'name'  => $cats[$cid]['name'] ?? 'Ohne Kategorie',
+                    'color' => $cats[$cid]['color'] ?? '#adb5bd',
+                    'avg'   => 0.0,
+                ];
+                $breakdown[$acc]['categories'][$cid]['avg'] += $avg;
+            } else {
+                $breakdown[$acc]['excluded'][$r['kind']] = ($breakdown[$acc]['excluded'][$r['kind']] ?? 0) + $avg;
+            }
+        }
+        foreach ($months as $acc => $_) {
+            $averages[$acc] = round($averages[$acc] ?? 0, 2);
+        }
+        foreach ($breakdown as &$b) {
+            $b['categories'] = array_values(array_filter($b['categories'], fn ($c) => abs($c['avg']) >= 0.005));
+            usort($b['categories'], fn ($x, $y) => abs($y['avg']) <=> abs($x['avg']));
+        }
+        unset($b);
+        return ['averages' => $averages, 'breakdown' => $breakdown];
     }
 }

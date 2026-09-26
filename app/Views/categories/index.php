@@ -31,12 +31,12 @@ foreach ($tree as $t) {
                             <div class="list-group-item">
                                 <?= View::partial('partials/category_badge', ['icon' => $p['icon'], 'color' => $p['color']]) ?>
                                 <div class="tx-main">
-                                    <div class="tx-title"><?= e($p['name']) ?></div>
+                                    <div class="tx-title"><?= e($p['name']) ?><?php if ($p['exclude_from_forecast']): ?> <i class="bi bi-graph-down text-body-secondary small" title="In der Prognose ausgeklammert (inkl. Unterkategorien)"></i><?php endif; ?></div>
                                     <?php if ($p['children']): ?>
                                         <div class="d-flex flex-wrap gap-1 mt-1">
                                             <?php foreach ($p['children'] as $c): ?>
                                                 <?php if ($isAdmin): ?>
-                                                    <button type="button" class="badge rounded-pill text-bg-light border" @click='open(<?= e(json_encode($c)) ?>)'><?= e($c['name']) ?></button>
+                                                    <button type="button" class="badge rounded-pill text-bg-light border" @click='open(<?= e(json_encode($c)) ?>)'><?= e($c['name']) ?><?php if ($c['exclude_from_forecast']): ?> <i class="bi bi-graph-down" title="In der Prognose ausgeklammert"></i><?php endif; ?></button>
                                                 <?php else: ?>
                                                     <span class="badge rounded-pill text-bg-light border"><?= e($c['name']) ?></span>
                                                 <?php endif; ?>
@@ -92,6 +92,11 @@ foreach ($tree as $t) {
                             <label class="form-label">Farbe</label>
                             <input type="color" class="form-control form-control-color" name="color" x-model="form.color">
                         </div>
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" name="exclude_from_forecast" value="1" id="exclForecast" :checked="+form.exclude_from_forecast === 1">
+                            <label class="form-check-label" for="exclForecast">In der Prognose ausklammern</label>
+                            <div class="form-text">Buchungen dieser Kategorie (bei Hauptkategorien auch der Unterkategorien) zählen nicht zum variablen Ø – z. B. für Einmaleffekte wie Anschaffungen, Erstattungen oder Erbschaften.</div>
+                        </div>
                         <label class="form-label">Symbol</label>
                         <input type="hidden" name="icon" :value="form.icon">
                         <div class="d-flex flex-wrap gap-1">
@@ -139,7 +144,7 @@ foreach ($tree as $t) {
         return {
             form: {},
             open(cat) {
-                this.form = Object.assign({ id: null, name: '', type: 'expense', parent_id: '', color: '#6c757d', icon: 'tag' }, cat || {});
+                this.form = Object.assign({ id: null, name: '', type: 'expense', parent_id: '', color: '#6c757d', icon: 'tag', exclude_from_forecast: 0 }, cat || {});
                 this.form.parent_id = this.form.parent_id ? String(this.form.parent_id) : '';
                 bootstrap.Modal.getOrCreateInstance(document.getElementById('catModal')).show();
             },

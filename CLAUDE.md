@@ -58,8 +58,8 @@ Header `X-CSRF-Token`); `HB.post()` in `public/assets/js/app.js` setzt den Heade
 | `CategorizationService` + `CategoryKeywords` | Vorschläge: eigene Regeln → Historie/bekanntes Produkt → ähnliches Produkt → Stichwörter |
 | `ReceiptTextParser` | Bontext/PDF-Text → Geschäft, Datum, Summe, Posten; toleriert OCR-Fehler, heilt Einzelziffern über die Summe |
 | `AiReceiptRecognizer` | Claude API (offizielles PHP-SDK, Beta-Messages mit `fallbacks: 'default'`), JSON-Schema-Ausgabe |
-| `ReportService` | Summen/Kategorien/Monatsverläufe; mit Einkauf verknüpfte Buchungen optional nach Posten aufgeteilt |
-| `ForecastService` | Prognose: Saldo heute + Fixkosten-Termine + Ø variabler Monatssaldo (ohne `recurring_id`/Umbuchungen) |
+| `ReportService` | Summen/Kategorien/Monatsverläufe; mit Einkauf verknüpfte Buchungen optional nach Posten aufgeteilt; Umbuchungen nur bei Kontofilter |
+| `ForecastService` | Prognose: Saldo heute + Fixkosten-Termine + variabler Monatssaldo je Konto – Ø (ohne `recurring_id`/Umbuchungen/erkannte Import-Paare/ausgeklammerte Kategorien) oder Handwert aus einem Szenario |
 | `LoanCalculator` | Tilgungsplan (30/360, erste Periode taggenau), Sondertilgungen, Zins-/Ratenänderungen, `balanceAt()` |
 | `Migrator` | führt `database/migrations/*.sql` aus (auch automatisch beim ersten Seitenaufruf/Setup) |
 
@@ -78,7 +78,8 @@ Header `X-CSRF-Token`); `HB.post()` in `public/assets/js/app.js` setzt den Heade
 - **Formulare mobil-freundlich:** `inputmode="decimal"` für Beträge, native `<select>` (Partial
   `partials/category_select.php`), wenige Pflichtfelder, Hauptaktion groß.
 - **Neue DB-Änderungen** nur als neue Migrationsdatei `database/migrations/003_….sql` (bestehende nie ändern –
-  sie sind auf Installationen bereits gelaufen). Statements mit `;` am Zeilenende trennen.
+  sie sind auf Installationen bereits gelaufen). Statements mit `;` am Zeilenende trennen. **Nur SQL, das MySQL 8
+  und MariaDB beide können** – kein `ADD COLUMN IF NOT EXISTS` o. ä.; „existiert schon“-Fehler überspringt der `Migrator`.
 - **Diagramme** (Chart.js): vor Änderungen den `dataviz`-Skill beachten. Farben aus `HB.series(i)` (validierte Palette,
   feste Reihenfolge, max. 8 Serien, Rest „Übrige“ = `HB.otherColor()`), `HB.chartDefaults()` aufrufen, keine zweite
   y-Achse, Legende ab 2 Serien, Tooltips an. Kategorien/Konten tragen eigene Farben (Farbe folgt der Entität).
@@ -108,7 +109,7 @@ Header `X-CSRF-Token`); `HB.post()` in `public/assets/js/app.js` setzt den Heade
 
 ## Status / mögliche nächste Schritte
 
-Alle geplanten Module sind umgesetzt und getestet (47 PHPUnit-Tests; Browser-Durchlauf Foto → lokale OCR → Speichern).
+Alle geplanten Module sind umgesetzt und getestet (50 PHPUnit-Tests; Browser-Durchlauf Foto → lokale OCR → Speichern).
 Noch nicht real getestet: Kamera auf echtem Smartphone (braucht HTTPS), KI-Erkennung mit echtem API-Schlüssel.
 Ideen: Budgets je Kategorie mit Warnung, Sparziele, Bearbeiten von CSV-Profilen in der Oberfläche,
 Konten-Export/Backup, E-Mail-Einladung für Familienmitglieder, Zwei-Faktor-Login.

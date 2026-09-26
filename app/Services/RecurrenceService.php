@@ -116,6 +116,8 @@ final class RecurrenceService
      * Monatliche fixe Einnahmen/Ausgaben (Cent) der aktiven, nicht beendeten Vorlagen.
      * Ohne Kontofilter zählen Umbuchungen nicht (Geld bleibt im Haushalt). Mit Kontofilter zählen Umbuchungen,
      * die die Grenze der gewählten Konten überschreiten: hinaus als Ausgabe, herein als Einnahme.
+     * Gegeneinträge (zwei über counterpart_id verknüpfte Vorlagen) gelten ebenso als Umbuchung, solange beide laufen:
+     * Sie fallen heraus, wenn das Konto des Gegenstücks ebenfalls betrachtet wird (ohne Filter immer).
      *
      * @param int[] $accountFilter leer = alle Konten
      * @return array{income:int, expense:int}
@@ -140,10 +142,20 @@ final class RecurrenceService
                 $cents = $fromIn ? -abs($cents) : abs($cents);
             } elseif ($accountFilter && !in_array((int) $r['account_id'], $accountFilter, true)) {
                 continue;
+            } elseif (self::counterpartRuns($r, $today)
+                && (!$accountFilter || in_array((int) $r['counterpart_account_id'], $accountFilter, true))) {
+                continue;
             }
             $cents > 0 ? $income += $cents : $expense += $cents;
         }
         return ['income' => $income, 'expense' => $expense];
+    }
+
+    /** Hat die Vorlage einen aktiven, nicht beendeten Gegeneintrag? */
+    private static function counterpartRuns(array $r, string $today): bool
+    {
+        return !empty($r['counterpart_account_id']) && !empty($r['counterpart_active'])
+            && (empty($r['counterpart_end_date']) || $r['counterpart_end_date'] >= $today);
     }
 
     /** Liegt $date höchstens $days Tage neben einem Termin der Vorlage? */
@@ -168,16 +180,21 @@ final class RecurrenceService
         return false;
     }
 
+    /** Rückblick vor das Startdatum (Monate, Vielfaches von 12 → gleicher Rhythmus) und Betragstoleranz bei bekanntem Empfänger */
+    public const LOOKBACK_MONTHS = 24;
+    public const AMOUNT_TOLERANCE = 0.15;
+
     /**
-     * Verknüpft vorhandene Buchungen ohne Vorlage (z. B. aus CSV-Import) mit passenden Fixkosten:
-     * gleiches Konto, gleicher Betrag, Datum nahe einem Termin. Dadurch werden sie als Fixkosten gekennzeichnet
-     * und in der Prognose nicht doppelt (als variable Ausgabe) gezählt.
+     * Verknüpft vorhandene Buchungen ohne Vorlage (z. B. aus CSV-Import) mit passenden Fixkosten.
+     * Dadurch werden sie als Fixkosten gekennzeichnet und in der Prognose nicht doppelt (als variable Ausgabe) gezählt.
+     * Regeln siehe pickMatches(); Umbuchungs-Vorlagen werden auf beiden Konten gesucht (Ausgang/Eingang).
      *
      * @param int|null $templateId nur diese Vorlage, sonst alle aktiven des Haushalts
      * @return int Anzahl verknüpfter Buchungen
      */
-    public static function linkExisting(int $householdId, ?int $templateId = null): int
+    public static function linkExisting(int $householdId, ?int $templateId = null, ?string $today = null): int
     {
+        $today ??= date('Y-m-d');
         $repo = new RecurringRepository();
         $txRepo = new TransactionRepository();
         $templates = $templateId
@@ -185,24 +202,103 @@ final class RecurrenceService
             : $repo->activeOfHousehold($householdId);
         $count = 0;
         foreach ($templates as $tpl) {
-            if ($tpl['to_account_id']) {
-                continue;
-            }
-            $candidates = $txRepo->unlinkedForTemplate($householdId, $tpl);
-            if (!$candidates) {
-                continue;
-            }
-            // Nur gleicher Betrag reicht nicht (z. B. 15,99 € bei Netflix und im Laden) – Empfänger muss passen
-            $payees = array_filter([$tpl['payee'], ...$txRepo->payeesForRecurring((int) $tpl['id'])]);
-            $ids = [];
-            foreach ($candidates as $t) {
-                if (self::matchesOccurrence($tpl, $t['booking_date']) && self::samePayeeAny($payees, $t['payee'])) {
-                    $ids[] = (int) $t['id'];
+            $cents = Money::toCents($tpl['amount']);
+            $sides = $tpl['to_account_id']
+                ? [(int) $tpl['account_id'] => -abs($cents), (int) $tpl['to_account_id'] => abs($cents)]
+                : [(int) $tpl['account_id'] => $cents];
+            // Nur gleicher Betrag reicht nicht (z. B. 15,99 € bei Netflix und im Laden) – Empfänger muss passen.
+            // Ausnahme Umbuchung: in der Bankbuchung steht der eigene Name, nicht die Bezeichnung der Vorlage.
+            $payees = $tpl['to_account_id'] ? [] : array_values(array_filter([$tpl['payee'], ...$txRepo->payeesForRecurring((int) $tpl['id'])]));
+            $lookback = $payees || $tpl['to_account_id'];
+            foreach ($sides as $accountId => $amount) {
+                if ($amount === 0) {
+                    continue;
                 }
+                [$min, $max, $from, $to] = self::candidateWindow($tpl, $amount, (bool) $payees, $lookback, $today);
+                $candidates = $txRepo->unlinkedCandidates($householdId, $accountId, Money::toDecimal($min), Money::toDecimal($max), $from, $to);
+                if (!$candidates) {
+                    continue;
+                }
+                $ids = self::pickMatches($tpl, $amount, $candidates, $payees, $txRepo->linkedDates((int) $tpl['id'], $accountId), $lookback);
+                $count += $txRepo->linkRecurring($householdId, $ids, (int) $tpl['id']);
             }
-            $count += $txRepo->linkRecurring($householdId, $ids, (int) $tpl['id']);
         }
         return $count;
+    }
+
+    /**
+     * Suchfenster für Kandidaten: Betrag (Cent) und Datum.
+     * Mit bekanntem Empfänger ±15 %, sonst centgenau. Mit $lookback bis 24 Monate vor dem Start
+     * (Vorlagen werden oft erst nachträglich angelegt, die Buchungen davor gehören trotzdem dazu), sonst ab Start.
+     * @return array{0:int, 1:int, 2:string, 3:string}
+     */
+    public static function candidateWindow(array $tpl, int $amount, bool $payeeKnown, bool $lookback, string $today): array
+    {
+        $tol = $payeeKnown ? (int) round(abs($amount) * self::AMOUNT_TOLERANCE) : 0;
+        $start = new DateTimeImmutable($tpl['start_date']);
+        if ($lookback) {
+            $start = $start->modify('-' . self::LOOKBACK_MONTHS . ' months');
+        }
+        $from = $start->modify('-5 days')->format('Y-m-d');
+        $to = (new DateTimeImmutable($tpl['end_date'] ?: $today))->modify('+5 days')->format('Y-m-d');
+        return [$amount - $tol, $amount + $tol, $from, $to];
+    }
+
+    /**
+     * Reine Auswahl (testbar): welche Kandidaten gehören zur Vorlage?
+     * – Empfänger passt (ohne bekannte Empfänger: nur centgenauer Betrag),
+     * – Datum höchstens 5 Tage neben einem Termin im Rhythmus der Vorlage (mit $lookback auch vor dem Start),
+     * – je Termin höchstens eine Buchung (die mit dem nächsten Betrag, dann dem nächsten Datum);
+     *   Termine, die schon eine verknüpfte Buchung haben, sind belegt.
+     * @param int $amount erwarteter Betrag in Cent (mit Vorzeichen)
+     * @param array<int, array{id:int|string, booking_date:string, payee:?string, amount:string}> $candidates
+     * @param string[] $linkedDates
+     * @return int[]
+     */
+    public static function pickMatches(array $tpl, int $amount, array $candidates, array $payees, array $linkedDates, bool $lookback): array
+    {
+        $rhythm = $tpl;
+        if ($lookback) {
+            $rhythm['start_date'] = (new DateTimeImmutable($tpl['start_date']))->modify('-' . self::LOOKBACK_MONTHS . ' months')->format('Y-m-d');
+        }
+        $nearest = function (string $date) use ($rhythm): ?string {
+            $best = null;
+            foreach (self::occurrences($rhythm, date('Y-m-d', strtotime("$date -5 days")), date('Y-m-d', strtotime("$date +5 days"))) as $occ) {
+                if ($best === null || abs(strtotime($occ) - strtotime($date)) < abs(strtotime($best) - strtotime($date))) {
+                    $best = $occ;
+                }
+            }
+            return $best;
+        };
+
+        $taken = [];
+        foreach ($linkedDates as $d) {
+            if ($occ = $nearest($d)) {
+                $taken[$occ] = true;
+            }
+        }
+        $scored = [];
+        foreach ($candidates as $c) {
+            $cents = Money::toCents($c['amount']);
+            if ($payees ? !self::samePayeeAny($payees, $c['payee']) : $cents !== $amount) {
+                continue;
+            }
+            $occ = $nearest($c['booking_date']);
+            if ($occ === null) {
+                continue;
+            }
+            $scored[] = ['id' => (int) $c['id'], 'occ' => $occ, 'diff' => abs($cents - $amount), 'days' => abs(strtotime($occ) - strtotime($c['booking_date']))];
+        }
+        usort($scored, fn ($a, $b) => [$a['diff'], $a['days'], $a['id']] <=> [$b['diff'], $b['days'], $b['id']]);
+        $ids = [];
+        foreach ($scored as $s) {
+            if (!isset($taken[$s['occ']])) {
+                $taken[$s['occ']] = true;
+                $ids[] = $s['id'];
+            }
+        }
+        sort($ids);
+        return $ids;
     }
 }
 

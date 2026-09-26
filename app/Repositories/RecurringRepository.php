@@ -11,7 +11,8 @@ final class RecurringRepository extends Repository
         $active = $onlyActive ? 'AND r.active = 1' : '';
         return $this->many(
             'SELECT r.*, a.name AS account_name, a.color AS account_color, ta.name AS to_account_name,
-                    c.name AS category_name, c.icon AS category_icon, c.color AS category_color, ca.name AS counterpart_account_name
+                    c.name AS category_name, c.icon AS category_icon, c.color AS category_color, ca.name AS counterpart_account_name,
+                    cp.account_id AS counterpart_account_id, cp.active AS counterpart_active, cp.end_date AS counterpart_end_date
              FROM recurring_transactions r
              JOIN accounts a ON a.id = r.account_id
              LEFT JOIN accounts ta ON ta.id = r.to_account_id

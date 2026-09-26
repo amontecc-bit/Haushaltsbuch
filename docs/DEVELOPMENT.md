@@ -50,19 +50,34 @@ Neue Stichwörter in `CategoryKeywords` (Schlüssel = Kategoriename aus dem Stan
 `CategoryRepository::seedDefaults()`; bei Posten zählen auch Wortanfang/-ende, längster Treffer gewinnt).
 
 **Prognose:** variable Beträge = Buchungen der letzten N **vollen** Monate ohne `recurring_id` und ohne Umbuchungen,
-geteilt durch die verfügbaren Monate, gleichmäßig auf Tage verteilt. Kreditraten fließen nur ein, wenn sie als
+geteilt durch die verfügbaren Monate, gleichmäßig auf Tage verteilt. Ebenfalls nicht gezählt: Kategorien mit
+`exclude_from_forecast` (Migration 004, wirkt über die Hauptkategorie auf Unterkategorien) und erkannte Umbuchungspaare
+aus dem CSV-Import (Gegenbuchung mit umgekehrtem Betrag auf anderem Prognose-Konto, ±3 Tage, Gegenseite weder
+Umbuchung noch Fixkosten) – sonst zählt z. B. eine Fixkosten-Umbuchung doppelt. `ForecastService::run()` liefert
+dazu `breakdown` je Konto (Hauptkategorien + nicht gezählte Beträge) für die Ansicht. Kreditraten fließen nur ein, wenn sie als
 Fixkosten angelegt sind (Button auf der Kreditseite).
 
 **Fixkosten ↔ Buchungen:** `transactions.recurring_id` kennzeichnet eine Buchung als Fixkosten (Liste, Filter
 „Fixkosten“) und nimmt sie aus dem variablen Ø der Prognose. `RecurrenceService::linkExisting()` ordnet vorhandene
-Buchungen ohne Vorlage zu: gleiches Konto + Betrag, Datum ±5 Tage um einen Termin **und** passender Empfänger
-(Vorlage oder bereits zugeordnete Buchungen; nur Betrag wäre zu unscharf). Läuft täglich mit `materializeDue()` sowie
+Buchungen ohne Vorlage zu (`pickMatches()`, rein/getestet): gleiches Konto, Datum ±5 Tage um einen Termin im Rhythmus
+der Vorlage, je Termin höchstens eine Buchung. Mit bekanntem Empfänger (Vorlage oder bereits zugeordnete Buchungen)
+muss dieser passen, der Betrag darf ±15 % abweichen und es wird bis 24 Monate vor das Startdatum geschaut (Vorlagen
+entstehen oft nachträglich – sonst zählten die älteren Buchungen im Prognose-Ø doppelt). Ohne Empfänger: centgenau,
+ab Start. Umbuchungs-Vorlagen: beide Konten (−/+), Empfänger egal, centgenau, mit Rückblick. Läuft täglich mit `materializeDue()` sowie
 nach dem Speichern einer Vorlage. Wird eine Vorlage wieder automatisch gebucht (nur Prognose/pausiert → aktiv),
 setzt der Controller `last_booked_date` auf gestern, damit keine alten Termine nachgebucht werden.
 **Gegeneintrag:** zwei Vorlagen mit umgekehrtem Betrag auf verschiedenen Konten, gegenseitig über `counterpart_id`
 verknüpft (Migration 003); beim Bearbeiten werden Betrag, Bezeichnung, Termine und „Aktiv“ optional übertragen.
 Monatssummen der Fixkosten-Übersicht: `RecurrenceService::monthlyTotals()` – mit Kontofilter zählen Umbuchungen über
-die Grenze der gewählten Konten als Einnahme/Ausgabe.
+die Grenze der gewählten Konten als Einnahme/Ausgabe. Gegeneinträge (beide Seiten aktiv) zählen wie Umbuchungen:
+ohne Filter gar nicht, mit Filter nur, wenn das Konto des Gegenstücks nicht mitgewählt ist.
+**Prognose-Szenarien** (Migration 005, `forecast_scenarios` + `forecast_scenario_values`): je Konto ein Handwert für
+den variablen Monatssaldo; Konto ohne Eintrag = berechneter Ø (`ForecastService::effectiveVariable()`, rein/getestet).
+`run(..., $manual)` liefert zusätzlich `computed` (Ø), `manual` und `baseline` (Gesamtverlauf nur mit Ø, für die
+Vergleichslinie; `null`, wenn das Szenario nichts ändert). Gewähltes Szenario merkt sich die Sitzung (`forecast_scenario`).
+Beim Speichern werden nur die für den Nutzer sichtbaren Prognose-Konten ersetzt, Werte anderer Konten bleiben.
+Auswertungen (`ReportService`): ohne Kontofilter keine Umbuchungen; mit Kontofilter zählen sie mit, in den
+Kategorie-Auswertungen unter der Pseudo-ID `ReportService::TRANSFER_ID` (-2, „Umbuchungen“).
 
 ## Tests
 

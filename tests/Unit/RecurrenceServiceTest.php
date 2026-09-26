@@ -76,6 +76,25 @@ final class RecurrenceServiceTest extends TestCase
         self::assertSame(['income' => 300000, 'expense' => -40000], RecurrenceService::monthlyTotals($rows, [1, 2], '2024-06-01'));
     }
 
+    public function testMonthlyTotalsTreatCounterpartsAsTransfers(): void
+    {
+        $pair = ['counterpart_active' => 1, 'counterpart_end_date' => null];
+        $rows = [
+            $this->row(1, '3000.00'),
+            ['counterpart_account_id' => 2] + $pair + $this->row(1, '-500.00'), // Gegeneintrag: 1 → 2
+            ['counterpart_account_id' => 1] + $pair + $this->row(2, '500.00'),
+            ['counterpart_account_id' => 3, 'counterpart_active' => 0] + $pair + $this->row(1, '-80.00'), // Gegenstück pausiert
+        ];
+        // Alle Konten und beide Konten: Paar neutral
+        self::assertSame(['income' => 300000, 'expense' => -8000], RecurrenceService::monthlyTotals($rows, [], '2024-06-01'));
+        self::assertSame(['income' => 300000, 'expense' => -8000], RecurrenceService::monthlyTotals($rows, [1, 2], '2024-06-01'));
+        // Einzelne Konten: jeweilige Seite zählt
+        self::assertSame(['income' => 300000, 'expense' => -58000], RecurrenceService::monthlyTotals($rows, [1], '2024-06-01'));
+        self::assertSame(['income' => 50000, 'expense' => 0], RecurrenceService::monthlyTotals($rows, [2], '2024-06-01'));
+        // Konten 1 und 3: Gegenstück auf 2 liegt außerhalb
+        self::assertSame(['income' => 300000, 'expense' => -58000], RecurrenceService::monthlyTotals($rows, [1, 3], '2024-06-01'));
+    }
+
     public function testSamePayeeAnyRequiresMatchingPayee(): void
     {
         self::assertFalse(RecurrenceService::samePayeeAny(['Netflix'], '93 ERNSTINGS FAM.BAD SALZUF'));
@@ -91,5 +110,38 @@ final class RecurrenceServiceTest extends TestCase
         self::assertTrue(RecurrenceService::matchesOccurrence($tpl, '2024-02-27'));
         self::assertFalse(RecurrenceService::matchesOccurrence($tpl, '2024-03-15'));
         self::assertFalse(RecurrenceService::matchesOccurrence($tpl, '2023-12-20'));
+    }
+
+    public function testPickMatchesLooksBeforeStartWithToleranceAndOnePerOccurrence(): void
+    {
+        // Vorlage erst am 01.09. angelegt, Abschlag vorher 90 € statt 100 €
+        $tpl = $this->tpl('monthly', 15, '2026-09-15');
+        $c = fn (int $id, string $date, string $amount, string $payee = 'Stadtwerke Musterstadt') => ['id' => $id, 'booking_date' => $date, 'amount' => $amount, 'payee' => $payee];
+        $ids = RecurrenceService::pickMatches($tpl, -10000, [
+            $c(1, '2026-06-15', '-90.00'),
+            $c(2, '2026-07-16', '-90.00'),
+            $c(3, '2026-07-17', '-95.00'),                 // zweite Buchung im selben Termin → nur die nähere am Betrag
+            $c(4, '2026-08-25', '-100.00'),                // 10 Tage neben dem Termin
+            $c(5, '2026-08-14', '-100.00', 'Supermarkt'),  // anderer Empfänger
+            $c(6, '2026-05-15', '-100.00'),                // Termin schon mit verknüpfter Buchung belegt
+        ], ['Stadtwerke'], ['2026-05-14'], true);
+        self::assertSame([1, 3], $ids);
+    }
+
+    public function testPickMatchesWithoutPayeeNeedsExactAmountFromStart(): void
+    {
+        $tpl = $this->tpl('monthly', 1, '2026-08-01');
+        $c = fn (int $id, string $date, string $amount) => ['id' => $id, 'booking_date' => $date, 'amount' => $amount, 'payee' => 'Max Mustermann'];
+        $cands = [$c(1, '2026-07-01', '-200.00'), $c(2, '2026-08-02', '-200.00'), $c(3, '2026-09-01', '-190.00')];
+        self::assertSame([2], RecurrenceService::pickMatches($tpl, -20000, $cands, [], [], false));
+        // Umbuchungs-Vorlage: Empfänger egal, centgenau, auch vor dem Start
+        self::assertSame([1, 2], RecurrenceService::pickMatches($tpl, -20000, $cands, [], [], true));
+    }
+
+    public function testCandidateWindow(): void
+    {
+        $tpl = $this->tpl('monthly', 1, '2026-09-01');
+        self::assertSame([-11500, -8500, '2024-08-27', '2026-10-01'], RecurrenceService::candidateWindow($tpl, -10000, true, true, '2026-09-26'));
+        self::assertSame([-10000, -10000, '2026-08-27', '2026-10-01'], RecurrenceService::candidateWindow($tpl, -10000, false, false, '2026-09-26'));
     }
 }

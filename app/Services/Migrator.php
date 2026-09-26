@@ -11,6 +11,13 @@ use PDO;
 final class Migrator
 {
     /**
+     * Fehler „existiert schon“ bzw. „existiert nicht“ (Tabelle, Spalte, Index, Fremdschlüssel): Die Änderung ist bereits
+     * vorhanden, z. B. von Hand angelegt oder nach einem Abbruch. MySQL 8 kennt kein „ADD COLUMN IF NOT EXISTS“ (MariaDB schon),
+     * daher werden Migrationen ohne IF (NOT) EXISTS geschrieben und diese Fehler hier übersprungen.
+     */
+    private const ALREADY_APPLIED = [1050, 1060, 1061, 1091, 1826];
+
+    /**
      * Führt alle noch nicht angewendeten SQL-Dateien aus database/migrations aus.
      * @param bool $createDatabase Datenbank anlegen, falls sie fehlt (benötigt Rechte)
      * @return string[] Namen der ausgeführten Migrationen
@@ -41,7 +48,13 @@ final class Migrator
                 continue;
             }
             foreach (self::splitStatements((string) file_get_contents($file)) as $sql) {
-                $db->exec($sql);
+                try {
+                    $db->exec($sql);
+                } catch (\PDOException $e) {
+                    if (!in_array((int) ($e->errorInfo[1] ?? 0), self::ALREADY_APPLIED, true)) {
+                        throw new \RuntimeException("Migration $name fehlgeschlagen: " . $e->getMessage(), 0, $e);
+                    }
+                }
             }
             $db->prepare('INSERT INTO schema_migrations (name) VALUES (?)')->execute([$name]);
             $applied[] = $name;

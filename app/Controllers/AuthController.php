@@ -99,10 +99,14 @@ final class AuthController extends Controller
                 Migrator::run();
             }
             return (new UserRepository())->count() === 0;
-        } catch (\PDOException $e) {
+        } catch (\PDOException | \RuntimeException $e) {
+            error_log($e->getMessage());
+            $migration = $e instanceof \RuntimeException;
             View::render('errors/message', [
-                'title'   => 'Datenbank nicht erreichbar',
-                'message' => 'Bitte die Zugangsdaten in der Datei .env prüfen.'
+                'title'   => $migration ? 'Datenbank-Aktualisierung fehlgeschlagen' : 'Datenbank nicht erreichbar',
+                'message' => ($migration
+                        ? 'Die Datenbank ist erreichbar, aber eine Migration ließ sich nicht ausführen. Details stehen im Fehlerlog (storage/logs).'
+                        : 'Bitte die Zugangsdaten in der Datei .env prüfen.')
                     . (\App\Core\Config::get('app.debug') ? ' (' . $e->getMessage() . ')' : ''),
             ], 'layout_guest');
             exit;

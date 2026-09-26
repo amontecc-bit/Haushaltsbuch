@@ -84,6 +84,11 @@ $router->get('/reports/items', [ReportController::class, 'items']);
 $router->get('/reports/product', [ReportController::class, 'product']);
 $router->get('/reports/export', [ReportController::class, 'export']);
 $router->get('/forecast', [ForecastController::class, 'index']);
+$router->get('/forecast/scenarios/new', [ForecastController::class, 'createScenario']);
+$router->post('/forecast/scenarios', [ForecastController::class, 'storeScenario']);
+$router->get('/forecast/scenarios/{id}/edit', [ForecastController::class, 'editScenario']);
+$router->post('/forecast/scenarios/{id}', [ForecastController::class, 'updateScenario']);
+$router->post('/forecast/scenarios/{id}/delete', [ForecastController::class, 'deleteScenario']);
 
 // Kredite
 $router->get('/loans', [LoanController::class, 'index']);

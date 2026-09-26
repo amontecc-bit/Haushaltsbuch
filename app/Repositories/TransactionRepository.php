@@ -145,15 +145,23 @@ final class TransactionRepository extends Repository
         $this->exec('DELETE FROM transactions WHERE transfer_group = ? AND household_id = ?', [$group, $householdId]);
     }
 
-    /** Buchungen ohne Vorlage, die zu einer Vorlage passen könnten (Konto, Betrag, ab Start/bis Ende) */
-    public function unlinkedForTemplate(int $householdId, array $tpl): array
+    /** Buchungen ohne Vorlage auf einem Konto mit Betrag in [min, max] und Datum in [from, to] */
+    public function unlinkedCandidates(int $householdId, int $accountId, string $min, string $max, string $from, string $to): array
     {
         return $this->many(
-            'SELECT id, booking_date, payee FROM transactions
-             WHERE household_id = ? AND account_id = ? AND amount = ? AND recurring_id IS NULL AND transfer_group IS NULL
-               AND booking_date >= DATE_SUB(?, INTERVAL 5 DAY) AND booking_date <= DATE_ADD(COALESCE(?, CURDATE()), INTERVAL 5 DAY)',
-            [$householdId, $tpl['account_id'], $tpl['amount'], $tpl['start_date'], $tpl['end_date'] ?: null]
+            'SELECT id, booking_date, payee, amount FROM transactions
+             WHERE household_id = ? AND account_id = ? AND amount BETWEEN ? AND ? AND recurring_id IS NULL AND transfer_group IS NULL
+               AND booking_date BETWEEN ? AND ?',
+            [$householdId, $accountId, $min, $max, $from, $to]
         );
+    }
+
+    /** @return string[] Buchungsdaten der bereits mit der Vorlage verknüpften Buchungen eines Kontos */
+    public function linkedDates(int $recurringId, int $accountId): array
+    {
+        return array_column($this->many(
+            'SELECT booking_date FROM transactions WHERE recurring_id = ? AND account_id = ?', [$recurringId, $accountId]
+        ), 'booking_date');
     }
 
     /** @return string[] Empfänger der bereits einer Vorlage zugeordneten Buchungen */

@@ -36,4 +36,11 @@ final class ForecastServiceTest extends TestCase
         self::assertSame('2026-10-02', $r['min']['negative_from']);
         self::assertSame(-50.0, $r['min']['value']);
     }
+
+    public function testManualValuesOverrideComputedAverage(): void
+    {
+        // Konto 1: Handwert, Konto 2: berechneter Ø, Konto 3: weder noch → 0; Handwert 0 bleibt 0
+        $v = ForecastService::effectiveVariable([1, 2, 3, 4], [1 => -800.0, 2 => -120.5, 4 => -50.0], [1 => -650.0, 4 => 0.0]);
+        self::assertSame([1 => -650.0, 2 => -120.5, 3 => 0.0, 4 => 0.0], $v);
+    }
 }

@@ -3,6 +3,7 @@ $accountsById = array_column($result['accounts'], null, 'id');
 $start = $result['total'][0] ?? 0;
 $end = end($result['total']) ?: 0;
 $varTotal = array_sum($result['variable']);
+$hasBaseline = $result['baseline'] !== null;
 ?>
 <form method="get" class="card mb-3">
     <div class="card-body py-2 d-flex flex-wrap gap-2 align-items-center">
@@ -14,10 +15,25 @@ $varTotal = array_sum($result['variable']);
         </div>
         <label class="small text-body-secondary ms-2" for="avg">Ø variable Ausgaben aus</label>
         <select name="avg" id="avg" class="form-select form-select-sm w-auto" onchange="this.form.submit()">
-            <?php foreach ([0 => 'nicht berücksichtigen', 3 => '3 Monaten', 6 => '6 Monaten', 12 => '12 Monaten'] as $k => $l): ?>
+            <?php foreach ([0 => 'nicht berücksichtigen', 3 => '3 Monaten', 6 => '6 Monaten', 12 => '12 Monaten', 24 => '24 Monaten'] as $k => $l): ?>
                 <option value="<?= $k ?>" <?= selected($k, $avg) ?>><?= e($l) ?></option>
             <?php endforeach; ?>
         </select>
+        <label class="small text-body-secondary ms-2" for="scenario">Szenario</label>
+        <div class="input-group input-group-sm w-auto">
+            <select name="scenario" id="scenario" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="0">Berechneter Ø</option>
+                <?php foreach ($scenarios as $s): ?>
+                    <option value="<?= (int) $s['id'] ?>" <?= selected((int) $s['id'], (int) ($scenario['id'] ?? 0)) ?>><?= e($s['name']) ?></option>
+                <?php endforeach; ?>
+            </select>
+            <?php if (!\App\Core\Auth::isChild()): ?>
+                <?php if ($scenario): ?>
+                    <a class="btn btn-outline-secondary" href="<?= e(url("/forecast/scenarios/{$scenario['id']}/edit", ['avg' => $avg])) ?>" title="Szenario bearbeiten"><i class="bi bi-pencil"></i></a>
+                <?php endif; ?>
+                <a class="btn btn-outline-secondary" href="<?= e(url('/forecast/scenarios/new', ['avg' => $avg])) ?>" title="Neues Szenario"><i class="bi bi-plus-lg"></i></a>
+            <?php endif; ?>
+        </div>
         <select name="view" class="form-select form-select-sm w-auto ms-auto" onchange="this.form.submit()">
             <option value="total" <?= selected('total', $viewMode) ?>>Summe aller Konten</option>
             <option value="accounts" <?= selected('accounts', $viewMode) ?>>Je Konto</option>
@@ -33,7 +49,7 @@ $varTotal = array_sum($result['variable']);
     <div class="col-6 col-lg-3"><div class="card stat-card h-100"><div class="card-body"><div class="stat-label">Heute</div><div class="stat-value"><?= money($start) ?></div></div></div></div>
     <div class="col-6 col-lg-3"><div class="card stat-card h-100"><div class="card-body"><div class="stat-label">In <?= $months ?> Monaten</div><div class="stat-value <?= money_class($end) ?>"><?= money($end) ?></div><div class="small <?= money_class($end - $start) ?>"><?= ($end - $start) >= 0 ? '+' : '' ?><?= money($end - $start) ?></div></div></div></div>
     <div class="col-6 col-lg-3"><div class="card stat-card h-100"><div class="card-body"><div class="stat-label">Tiefster Stand</div><div class="stat-value <?= money_class($result['min']['value']) ?>"><?= money($result['min']['value']) ?></div><div class="small text-body-secondary"><?= e(date_de($result['min']['date'])) ?></div></div></div></div>
-    <div class="col-6 col-lg-3"><div class="card stat-card h-100"><div class="card-body"><div class="stat-label">Ø variabel / Monat</div><div class="stat-value <?= money_class($varTotal) ?>"><?= money($varTotal) ?></div><div class="small text-body-secondary">ohne Fixkosten</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card stat-card h-100"><div class="card-body"><div class="stat-label"><?= $result['manual'] ? 'Variabel' : 'Ø variabel' ?> / Monat</div><div class="stat-value <?= money_class($varTotal) ?>"><?= money($varTotal) ?></div><div class="small text-body-secondary"><?= $scenario ? 'Szenario „' . e($scenario['name']) . '“' : 'ohne Fixkosten' ?></div></div></div></div>
 </div>
 
 <div class="card mb-3">
@@ -67,8 +83,12 @@ $varTotal = array_sum($result['variable']);
             <div class="card-header bg-transparent"><strong>Stand am Monatsende</strong></div>
             <div class="table-responsive" style="max-height: 300px">
                 <table class="table table-sm mb-0">
+                    <?php if ($hasBaseline): ?>
+                        <thead class="sticky-top"><tr><th></th><th class="text-end">Szenario</th><th class="text-end text-body-secondary">berechn. Ø</th></tr></thead>
+                    <?php endif; ?>
                     <?php foreach ($monthEnds as $ym => $m): ?>
-                        <tr><td><?= e(month_de((int) substr($ym, 5, 2)) . ' ' . substr($ym, 0, 4)) ?></td><td class="table-amount <?= money_class($m['total']) ?>"><?= money($m['total']) ?></td></tr>
+                        <tr><td><?= e(month_de((int) substr($ym, 5, 2)) . ' ' . substr($ym, 0, 4)) ?></td><td class="table-amount <?= money_class($m['total']) ?>"><?= money($m['total']) ?></td>
+                            <?php if ($hasBaseline): ?><td class="table-amount text-body-secondary"><?= money($m['baseline']) ?></td><?php endif; ?></tr>
                     <?php endforeach; ?>
                 </table>
             </div>
@@ -77,15 +97,44 @@ $varTotal = array_sum($result['variable']);
             <div class="card-header bg-transparent"><strong>Annahmen je Konto</strong></div>
             <ul class="list-group list-group-flush small">
                 <?php foreach ($result['accounts'] as $a): ?>
-                    <li class="list-group-item d-flex justify-content-between">
-                        <span><span style="color: <?= e($a['color']) ?>">●</span> <?= e($a['name']) ?></span>
-                        <span>Ø variabel <?= money($result['variable'][(int) $a['id']] ?? 0) ?> / Monat</span>
+                    <?php $bd = $result['breakdown'][(int) $a['id']] ?? ['categories' => [], 'excluded' => []]; ?>
+                    <li class="list-group-item">
+                        <details>
+                            <summary class="d-flex justify-content-between gap-2" style="cursor: pointer">
+                                <span><span style="color: <?= e($a['color']) ?>">●</span> <?= e($a['name']) ?></span>
+                                <?php $aid = (int) $a['id']; $isManual = array_key_exists($aid, $result['manual']); ?>
+                                <span class="text-nowrap"><?= $isManual ? '<span class="badge text-bg-secondary">von Hand</span>' : 'Ø variabel' ?>
+                                    <span class="<?= money_class($result['variable'][$aid] ?? 0) ?>"><?= money($result['variable'][$aid] ?? 0) ?></span> / Monat</span>
+                            </summary>
+                            <?php if ($isManual): ?>
+                                <div class="text-body-secondary mt-2">Berechneter Ø zum Vergleich: <span class="<?= money_class($result['computed'][$aid] ?? 0) ?>"><?= money($result['computed'][$aid] ?? 0) ?></span> / Monat – die Aufschlüsselung zeigt die Grundlage dafür.</div>
+                            <?php endif; ?>
+                            <table class="table table-sm mb-0 mt-2">
+                                <?php foreach ($bd['categories'] as $c): ?>
+                                    <tr>
+                                        <td><span style="color: <?= e($c['color']) ?>">●</span>
+                                            <a class="text-body" href="<?= e(url('/transactions', ['account_id' => $a['id'], 'category_id' => $c['id'] ?? 'none', 'from' => $avgFrom, 'to' => $avgTo])) ?>"><?= e($c['name']) ?></a></td>
+                                        <td class="table-amount <?= money_class($c['avg']) ?>"><?= money($c['avg']) ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                                <?php foreach (['fixed' => 'Fixkosten (als Termine eingeplant)', 'pair' => 'Umbuchungen zw. eigenen Konten (erkannt)', 'category' => 'Ausgeklammerte Kategorien'] as $k => $label): ?>
+                                    <?php if (abs($bd['excluded'][$k] ?? 0) >= 0.005): ?>
+                                        <tr class="text-body-secondary"><td><i class="bi bi-slash-circle"></i> <?= e($label) ?> – nicht gezählt</td><td class="table-amount"><?= money($bd['excluded'][$k]) ?></td></tr>
+                                    <?php endif; ?>
+                                <?php endforeach; ?>
+                                <?php if (!$bd['categories'] && !$bd['excluded']): ?><tr><td class="text-body-secondary">Keine variablen Buchungen.</td></tr><?php endif; ?>
+                            </table>
+                        </details>
                     </li>
                 <?php endforeach; ?>
             </ul>
             <div class="card-footer small text-body-secondary">
-                Variable Beträge = alle Buchungen der letzten vollen Monate ohne Daueraufträge und Umbuchungen, gleichmäßig auf die Tage verteilt.
-                Konten lassen sich in den Kontoeinstellungen von der Prognose ausschließen.
+                <?php if ($scenario): ?>Szenario „<?= e($scenario['name']) ?>“<?= $scenario['note'] ? ': ' . e($scenario['note']) : '' ?> – Konten ohne eigenen Wert nutzen den berechneten Ø.<br><?php endif; ?>
+                Variable Beträge = alle Buchungen der letzten vollen Monate<?php if ($avg): ?> (<?= e(date_de($avgFrom)) ?> – <?= e(date_de($avgTo)) ?>)<?php endif; ?> ohne Fixkosten und Umbuchungen, gleichmäßig auf die Tage verteilt.
+                Als Umbuchung zählt auch ein importiertes Paar (gleicher Betrag, umgekehrtes Vorzeichen, anderes Konto, ±3 Tage).
+                Einmaleffekte lassen sich über Kategorien ausklammern (<a href="<?= e(url('/categories')) ?>">Kategorien</a> → „In der Prognose ausklammern“),
+                ganze Konten in den Kontoeinstellungen.
+                Konto antippen für die Aufschlüsselung.
             </div>
         </div>
     </div>
@@ -98,13 +147,16 @@ $varTotal = array_sum($result['variable']);
         const byAccount = <?= json_encode($viewMode === 'accounts') ?>;
         const datasets = byAccount
             ? c.accounts.map(a => ({ label: a.name, data: a.data, borderColor: a.color, backgroundColor: a.color, tension: .15 }))
-            : [{ label: 'Summe aller Konten', data: c.total, borderColor: HB.series(0), backgroundColor: HB.series(0) + '1f', fill: 'origin', tension: .15 }];
+            : [{ label: c.scenario ? 'Szenario „' + c.scenario + '“' : 'Summe aller Konten', data: c.total, borderColor: HB.series(0), backgroundColor: HB.series(0) + '1f', fill: 'origin', tension: .15 }];
+        if (!byAccount && c.baseline) {
+            datasets.push({ label: 'Berechneter Ø', data: c.baseline, borderColor: HB.series(1), backgroundColor: HB.series(1), borderDash: [6, 4], pointRadius: 0, tension: .15 });
+        }
         new Chart(document.getElementById('forecast'), {
             type: 'line',
             data: { labels: c.labels, datasets },
             options: {
                 maintainAspectRatio: false,
-                plugins: { legend: { display: byAccount && datasets.length > 1, position: 'bottom' } },
+                plugins: { legend: { display: datasets.length > 1, position: 'bottom' } },
                 scales: {
                     x: { ticks: { maxTicksLimit: 12 }, grid: { display: false } },
                     y: { ticks: { callback: HB.euroTick },

@@ -94,6 +94,8 @@ $scopeLabel = array_filter([
                                 <i class="bi bi-<?= e($c['icon']) ?>" style="color: <?= e($c['color']) ?>" <?= $parentCat ? 'data-series="' . ($idx < 7 ? $idx : -1) . '"' : '' ?>></i>
                                 <?php if (!$parentCat && $c['has_children']): ?>
                                     <a href="<?= e(url('/reports', $base + ['parent' => $c['id']])) ?>"><?= e($c['name']) ?></a> <i class="bi bi-chevron-right small text-body-secondary"></i>
+                                <?php elseif ($c['id'] === \App\Services\ReportService::TRANSFER_ID): ?>
+                                    <a class="text-body" href="<?= e(url('/transactions', array_filter(['from' => $from, 'to' => $to, 'type' => 'transfer', 'account_id' => $accountId, 'user_id' => $userId]))) ?>"><?= e($c['name']) ?></a>
                                 <?php else: ?>
                                     <a class="text-body" href="<?= e(url('/transactions', array_filter(['category_id' => $c['id'] ?? 'none', 'from' => $from, 'to' => $to, 'type' => 'expense', 'account_id' => $accountId, 'user_id' => $userId]))) ?>"><?= e($c['name']) ?></a>
                                 <?php endif; ?>
