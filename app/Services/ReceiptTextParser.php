@@ -20,7 +20,7 @@ use App\Core\Money;
 final class ReceiptTextParser
 {
     private const STORES = [
-        'REWE' => '/\brewe\b/i', 'EDEKA' => '/\bedeka\b|\bmarktkauf\b/i', 'ALDI' => '/\baldi\b/i', 'Lidl' => '/\blidl\b/i',
+        'REWE' => '/\brewe\b/i', 'EDEKA' => '/\bedeka\b|\bmarktkauf\b|^e[\s-]?center\b/im', 'ALDI' => '/\baldi\b/i', 'Lidl' => '/\blidl\b/i',
         'Netto' => '/\bnetto\b(?!\s*(betrag|umsatz|summe))/i', 'Penny' => '/\bpenny\b/i', 'Kaufland' => '/\bkaufland\b/i',
         'dm' => '/\bdm[\s-]*(drogerie|markt)|\bdm\b.*\bdrogerie/i', 'Rossmann' => '/\brossmann\b/i', 'Müller' => '/\bm(ü|ue)ller\b.*(drogerie|markt)/i',
         'Norma' => '/\bnorma\b/i', 'Globus' => '/\bglobus\b/i', 'tegut' => '/\btegut\b/i', 'Real' => '/\breal\s*,?-?\b/i',
@@ -32,7 +32,7 @@ final class ReceiptTextParser
     /** Zeilen, die nie Posten sind */
     private const SKIP = '/(^|\s)(mwst|mehrwertsteuer|ust|steuer|netto|brutto|gegeben|r(ü|u)ckgeld|wechselgeld|kartenzahlung|girocard|'
         . 'ec[\s-]?karte|maestro|visa|mastercard|kreditkarte|bar\b|tse|signatur|seriennr|transaktion|terminal|beleg|bon[\s-]?nr|'
-        . 'kasse|kassierer|bediener|filiale|markt[\s-]?nr|tel\.?|telefon|fax|www\.|http|ust-?id|steuer-?nr|st\.?-?nr|datum|uhrzeit|'
+        . 'kasse(\b|n)|kassierer|bediener|filiale|markt[\s-]?nr|tel\.?|telefon|fax|www\.|http|ust-?id|steuer-?nr|st\.?-?nr|datum|uhrzeit|'
         . 'vielen dank|danke|payback|punkte|coupon eingel|kundenkarte|genehmigung|autorisierung|kontaktlos|trace|zahlung|betrag eur|'
         . 'summe|zwischensumme|total|gesamt|zu zahlen|posten|artikel\s*:|anzahl artikel|trinkgeld|öffnungszeiten|mo-sa|leergutbon)/iu';
 
@@ -43,10 +43,41 @@ final class ReceiptTextParser
      */
     public static function parse(string $text): array
     {
-        $lines = self::lines($text);
+        // Mehrere Fotos eines langen Bons kommen durch "\f" getrennt; sie überlappen sich meist
+        $pages = array_values(array_filter(explode("\f", $text), fn ($p) => trim($p) !== ''));
+        $lines = self::lines(implode("\n", $pages));
         $store = self::detectStore($lines);
         $date = self::detectDate($lines);
-        [$total, $totalLine] = self::detectTotal($lines);
+        [$total] = self::detectTotal($lines);
+
+        $items = [];
+        foreach ($pages ?: [''] as $page) {
+            $pageItems = self::parseItems(self::lines($page));
+            if ($total !== null && count($pageItems) > 1) {
+                // Posten ab Bonsumme sind OCR-Fehler ("7195.81") oder eine verlesene Summenzeile ("AHLEN 115,51")
+                $pageItems = array_values(array_filter($pageItems, fn ($it) => abs($it['total_price']) < $total));
+            }
+            $items = self::mergeOverlap($items, $pageItems);
+        }
+        if ($total !== null) {
+            $items = self::healDigits($items, $total);
+        }
+        return ['store' => $store, 'date' => $date, 'total' => $total, 'items' => $items];
+    }
+
+    /** Posten einer Seite bzw. eines Fotos, bis zur Summenzeile */
+    private static function parseItems(array $lines): array
+    {
+        [, $totalLine] = self::detectTotal($lines);
+        if ($totalLine === null) {
+            // Summenzeile ohne lesbaren Betrag (OCR) beendet die Posten trotzdem
+            foreach ($lines as $i => $l) {
+                if (preg_match('/^\W{0,3}(zu zahlen|summe|gesamtsumme|gesamtbetrag)\b/iu', $l)) {
+                    $totalLine = $i;
+                    break;
+                }
+            }
+        }
 
         $items = [];
         $pendingQty = null; // Mengenzeile vor dem Posten (Lidl/Aldi-Stil)
@@ -111,11 +142,75 @@ final class ReceiptTextParser
             $pendingQty = null;
             $items[] = self::item($p['name'], $qty, $unit, $unitPrice, $p['total']);
         }
+        return $items;
+    }
 
-        if ($total !== null) {
-            $items = self::healDigits($items, $total);
+    /**
+     * Hängt die Posten eines weiteren Fotos an. Der Anfang des neuen Fotos wiederholt meist das Ende des vorherigen:
+     * Die Überlappung wird per LCS über ähnliche Posten gesucht (mind. 2 Treffer, am Ende bzw. Anfang), doppelte
+     * Posten fallen weg, und von zwei Lesungen desselben Postens bleibt die sauberere.
+     */
+    private static function mergeOverlap(array $prev, array $next): array
+    {
+        $n = count($prev);
+        if ($n === 0 || !$next) {
+            return array_merge($prev, $next);
         }
-        return ['store' => $store, 'date' => $date, 'total' => $total, 'items' => $items];
+        $from = max(0, $n - 40);
+        $a = array_slice($prev, $from);
+        $b = array_slice($next, 0, 40);
+        // LCS-Tabelle
+        $la = count($a);
+        $lb = count($b);
+        $dp = array_fill(0, $la + 1, array_fill(0, $lb + 1, 0));
+        for ($i = $la - 1; $i >= 0; $i--) {
+            for ($j = $lb - 1; $j >= 0; $j--) {
+                $dp[$i][$j] = self::sameItem($a[$i], $b[$j]) ? $dp[$i + 1][$j + 1] + 1 : max($dp[$i + 1][$j], $dp[$i][$j + 1]);
+            }
+        }
+        $pairs = [];
+        for ($i = 0, $j = 0; $i < $la && $j < $lb;) {
+            if (self::sameItem($a[$i], $b[$j]) && $dp[$i][$j] === $dp[$i + 1][$j + 1] + 1) {
+                $pairs[] = [$i, $j];
+                $i++;
+                $j++;
+            } elseif ($dp[$i + 1][$j] >= $dp[$i][$j + 1]) {
+                $i++;
+            } else {
+                $j++;
+            }
+        }
+        // echte Überlappung: reicht bis ans Ende des alten und beginnt am Anfang des neuen Fotos; mind. 2 Treffer –
+        // oder genau einer, wenn es der letzte Posten des alten und (fast) der erste des neuen Fotos ist
+        $single = count($pairs) === 1 && $pairs[0][0] === $la - 1 && $pairs[0][1] <= 1;
+        if (!$pairs || (count($pairs) < 2 && !$single) || $la - 1 - end($pairs)[0] > 4 || $pairs[0][1] > 4) {
+            return array_merge($prev, $next);
+        }
+        $out = array_slice($prev, 0, $from + $pairs[0][0]);
+        $pi = $pairs[0][0];
+        $pj = $pairs[0][1];
+        foreach ($pairs as [$i, $j]) {
+            // nicht zugeordnete Posten zwischen den Treffern behalten (in einem Foto evtl. unlesbar)
+            array_push($out, ...array_slice($a, $pi, $i - $pi), ...array_slice($b, $pj, $j - $pj));
+            $out[] = self::cleanliness($b[$j]['name']) > self::cleanliness($a[$i]['name']) ? $b[$j] : $a[$i];
+            $pi = $i + 1;
+            $pj = $j + 1;
+        }
+        return array_merge($out, array_slice($a, $pi), array_slice($b, $pj), array_slice($next, 40));
+    }
+
+    private static function sameItem(array $x, array $y): bool
+    {
+        $nx = preg_replace('/[^\p{L}\d]/u', '', mb_strtoupper($x['name']));
+        $ny = preg_replace('/[^\p{L}\d]/u', '', mb_strtoupper($y['name']));
+        similar_text($nx, $ny, $pct);
+        return abs($x['total_price'] - $y['total_price']) < 0.005 ? $pct >= 55 : $pct >= 85;
+    }
+
+    /** Anteil Buchstaben/Leerzeichen am Namen – OCR-Müll hat viele Sonderzeichen */
+    private static function cleanliness(string $name): float
+    {
+        return preg_match_all('/[\p{L} ]/u', $name) / max(1, mb_strlen($name));
     }
 
     /** Typische OCR-Verwechslungen bei Ziffern */
@@ -156,7 +251,9 @@ final class ReceiptTextParser
     /** @return string[] */
     private static function lines(string $text): array
     {
-        $text = str_replace(["\r\n", "\r", "\t"], ["\n", "\n", '  '], $text);
+        $text = str_replace(["\r\n", "\r", "\t", "\u{00A0}", "\u{202F}", "\u{2009}"], ["\n", "\n", '  ', ' ', ' ', ' '], $text);
+        // PDF-Rechnungen: "0,95 €11,40 €" → "0,95 € 11,40 €"
+        $text = preg_replace('/€(?=-?\d)/u', '€ ', $text);
         $out = [];
         foreach (explode("\n", $text) as $l) {
             // OCR-Fehler: "1, 49" → "1,49", "1.49" bleibt, "O" in Preisen → 0
@@ -168,10 +265,27 @@ final class ReceiptTextParser
             if (preg_match('/^\p{L}.*\s(\d{1,4},\d{2})\d$/u', $l) && !preg_match('/\b(kg|g|l)\b/iu', $l)) {
                 $l = preg_replace('/(\d{1,4},\d{2})\d$/u', '$1 X', $l);
             }
+            // Aldi-Stil "Preis € Steuerklasse" mit OCR-Rauschen: "3,55,€'2", "1,79€. 1", "0,99 €i1", "1,49 €}", "8,73 € |"
+            $l = preg_replace('/(\d{1,4}[,.]\d{2})\s*[,.]?\s*€\s*[.,;:\'‘’"`i]*\s*([12])?\s*[|\]}{)!]*\s*$/u', '$1 € $2', $l);
+            // EDEKA/Marktkauf-PDF: Steuerklasse direkt am Preis ("19,90B", "1,44AW", "29,99*B")
+            $l = preg_replace('/(?<=\s)(-?\d{1,4},\d{2})(\*?[A-Z]{1,2}\*?)$/u', '$1 $2', $l);
+            // "2€ x 0,99GURKEN  1,98 A" (Menge vor dem Namen, "€" steht im PDF für "St") → "2 x GURKEN 0,99 1,98 A"
+            $l = preg_replace('/^(\d{1,3})\s*(?:€|stk?\.?)?\s*[x×]\s*(\d{1,4},\d{2})\s*(?=\p{L})(.+?)\s+(-?\d{1,4},\d{2}(?:\s+\S{1,3})?)$/iu', '$1 x $3 $2 $4', $l);
             $l = trim(preg_replace('/[ ]{2,}/u', '  ', $l));
-            if ($l !== '') {
-                $out[] = $l;
+            if ($l === '') {
+                continue;
             }
+            // Tabellenzeile ohne Namen ("1 B 3,59 € 3,59 €"): Name stand umbrochen in den Zeilen davor
+            if (preg_match('/^-?\d{1,3}\s+[A-Z](?:\/[A-Z])?\s+\d{1,4},\d{2}\s*€?\s+-?\d{1,4},\d{2}\s*€?$/u', $l)) {
+                $name = [];
+                while ($out && count($name) < 2 && !preg_match('/\d,\d{2}|einzelpreis|^produkt$/iu', end($out))) {
+                    array_unshift($name, array_pop($out));
+                }
+                if ($name) {
+                    $l = implode(' ', $name) . '  ' . $l;
+                }
+            }
+            $out[] = $l;
         }
         return $out;
     }
@@ -195,7 +309,9 @@ final class ReceiptTextParser
     private static function detectDate(array $lines): ?string
     {
         foreach ($lines as $l) {
-            if (preg_match('/\b(\d{1,2})[.\/](\d{1,2})[.\/](\d{4}|\d{2})\b/', $l, $m)) {
+            // in Datumszeilen liest die OCR Punkte gern als Kommas: "Datum 25,09,26", "Da um, 25,09,26 18:03 Uhr"
+            $sep = preg_match('/datum|\d{1,2}:\d{2}|\buhr\b/i', $l) ? '[.\/,]' : '[.\/]';
+            if (preg_match('/\b(\d{1,2})' . $sep . '(\d{1,2})' . $sep . '(\d{4}|\d{2})\b/', $l, $m)) {
                 $y = strlen($m[3]) === 2 ? 2000 + (int) $m[3] : (int) $m[3];
                 if (checkdate((int) $m[2], (int) $m[1], $y) && $y >= 2000 && $y <= (int) date('Y') + 1) {
                     return sprintf('%04d-%02d-%02d', $y, $m[2], $m[1]);
@@ -250,7 +366,7 @@ final class ReceiptTextParser
             ];
         }
         // "2 x Milch 1,09 2,18" / "2x Milch 1,09"
-        if (preg_match('/^(\d{1,3})\s*[x×]\s+(\p{L}.{1,80}?)\s+' . $price . '(?:\s+' . $price . ')?(?:\s+[A-Z0-9])?$/iu', $l, $m)) {
+        if (preg_match('/^(\d{1,3})\s*[x×]\s+(\p{L}.{1,80}?)\s+' . $price . '(?:\s+' . $price . ')?(?:\s+\*?[A-Z0-9]{1,2}\*?)?$/iu', $l, $m)) {
             $qty = (float) $m[1];
             $a = Money::parse($m[3]) / 100;
             $b = isset($m[4]) && $m[4] !== '' ? Money::parse($m[4]) / 100 : null;
@@ -267,13 +383,18 @@ final class ReceiptTextParser
     {
         $price = '(-?\d{1,4}(?:\.\d{3})?[.,]\d{2})\s*(-)?';
         $tail = '(?:\s*(?:€|eur))?(?:\s+\*?[A-Z0-9]{1,2}\*?)?\s*$';
-        // Name  Menge  Einzelpreis  Gesamtpreis
-        if (preg_match('/^(.{2,80}?)\s+(\d{1,3}(?:[.,]\d{1,3})?)\s*(?:x|stk\.?|st\.?)?\s+' . $price . '(?:\s*(?:€|eur))?\s+' . $price . $tail . '/iu', $l, $m)) {
+        // Name  Menge  [Steuerklasse]  Einzelpreis  Gesamtpreis  (REWE-Rechnung: "Milch  12 B 0,95 € 11,40 €")
+        if (preg_match('/^(.{2,80}?)\s+(-?\d{1,3}(?:[.,]\d{1,3})?)\s*(?:x|stk\.?|st\.?)?\s+(?:(?-i:[A-Z](?:\/[A-Z])?)\s+)?' . $price . '(?:\s*(?:€|eur))?\s+' . $price . $tail . '/iu', $l, $m)) {
             $name = self::cleanName($m[1]);
             if ($name !== null) {
+                $qty = (float) str_replace(',', '.', $m[2]);
                 $unitPrice = Money::parse($m[3]) / 100 * ($m[4] === '-' ? -1 : 1);
                 $total = Money::parse($m[5]) / 100 * (($m[6] ?? '') === '-' ? -1 : 1);
-                return ['name' => $name, 'total' => $total, 'unit_price' => $unitPrice, 'qty' => (float) str_replace(',', '.', $m[2])];
+                if ($qty < 0) { // Rückgabe: "-9 A 0,50 € -4,50 €"
+                    $qty = -$qty;
+                    $unitPrice = -abs($unitPrice);
+                }
+                return ['name' => $name, 'total' => $total, 'unit_price' => $unitPrice, 'qty' => $qty];
             }
         }
         // Name  Preis
@@ -290,6 +411,14 @@ final class ReceiptTextParser
 
     private static function cleanName(string $name): ?string
     {
+        $name = preg_replace('/\s*[—–_~=<>|]{2,}.*$|(\s+[—–_~=<>|-]+)+$/u', '', $name); // Stiftstriche am Bon ("PURINA ——— —")
+        $name = preg_replace('/^[^\p{L}\d]+\s+/u', '', $name); // OCR-Krümel vor dem Namen ("; BASICS")
+        $name = preg_replace('/(\s+[^\p{L}\d\s]{1,2})+$/u', '', $name); // … und dahinter ("BIO MÖHREN NL ;")
+        // Bon in Großbuchstaben: einzelne Zeichen am Rand sind Krümel vom Bildrand ("I FRUCHTSAFT", "ı WISSENSBUCH", "SORT. 19 u")
+        $core = preg_replace('/^\S\s+(?=\p{L}{3})|\s+\p{Ll}$/u', '', $name);
+        if (mb_strtoupper($core) === $core && preg_match('/\p{Lu}{3}/u', $core)) {
+            $name = $core;
+        }
         $name = trim(preg_replace('/\s{2,}/u', ' ', $name), " \t.:-*#");
         $name = preg_replace('/^\d{4,}\s+/', '', $name); // Artikelnummern
         if (mb_strlen($name) < 2 || !preg_match('/\p{L}{2,}/u', $name)) {

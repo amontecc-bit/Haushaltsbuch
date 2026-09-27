@@ -7,4 +7,4 @@
 /storage/cache/*
 !/storage/**/.gitkeep
 /.phpunit.cache/
-config/config.php
+/samples/

@@ -39,34 +39,143 @@
         return new Promise((resolve) => c.toBlob(resolve, 'image/jpeg', quality));
     }
 
-    /** Aufbereitung für OCR: Graustufen + Kontrast strecken, Breite 1200–2400 px */
+    /** Gleitendes Max/Min (Fenster 2r+1) erst über Zeilen, dann über Spalten; am Rand nur der Bildteil */
+    function rankFilter(src, w, h, r, pick) {
+        const tmp = new Float32Array(src.length), out = new Float32Array(src.length);
+        for (let y = 0; y < h; y++) {
+            const o = y * w;
+            for (let x = 0; x < w; x++) {
+                let v = src[o + x];
+                for (let k = Math.max(0, x - r), e = Math.min(w - 1, x + r); k <= e; k++) v = pick(v, src[o + k]);
+                tmp[o + x] = v;
+            }
+        }
+        for (let x = 0; x < w; x++) {
+            for (let y = 0; y < h; y++) {
+                let v = tmp[y * w + x];
+                for (let k = Math.max(0, y - r), e = Math.min(h - 1, y + r); k <= e; k++) v = pick(v, tmp[k * w + x]);
+                out[y * w + x] = v;
+            }
+        }
+        return out;
+    }
+
+    /** Mittelwert im Fenster 2r+1 (laufende Summen, am Rand nur der Bildteil) */
+    function boxBlur(src, w, h, r) {
+        const tmp = new Float32Array(src.length), out = new Float32Array(src.length);
+        const pass = (a, b, len, count, idx) => {
+            for (let line = 0; line < count; line++) {
+                let sum = 0, n = 0;
+                for (let k = 0; k < Math.min(r, len); k++) { sum += a[idx(line, k)]; n++; }
+                for (let i = 0; i < len; i++) {
+                    if (i + r < len) { sum += a[idx(line, i + r)]; n++; }
+                    if (i - r - 1 >= 0) { sum -= a[idx(line, i - r - 1)]; n--; }
+                    b[idx(line, i)] = sum / n;
+                }
+            }
+        };
+        pass(src, tmp, w, h, (y, x) => y * w + x);
+        pass(tmp, out, h, w, (x, y) => y * w + x);
+        return out;
+    }
+
+    /**
+     * Papier finden: hell + ungesättigt, auf einem groben Raster (1/8) Lücken der Schrift schließen und
+     * die größte zusammenhängende Fläche nehmen. Liefert Raster-Maske (Uint8Array, Breite sw) oder null.
+     */
+    function paperMask(px, w, h, step = 8) {
+        const sw = Math.floor(w / step), sh = Math.floor(h / step);
+        let m = new Float32Array(sw * sh);
+        for (let y = 0; y < sh; y++) {
+            for (let x = 0; x < sw; x++) {
+                const i = (y * step * w + x * step) * 4;
+                const mx = Math.max(px[i], px[i + 1], px[i + 2]), mn = Math.min(px[i], px[i + 1], px[i + 2]);
+                m[y * sw + x] = mx > 110 && mx - mn < 45 ? 1 : 0;
+            }
+        }
+        m = rankFilter(rankFilter(m, sw, sh, 7, Math.max), sw, sh, 7, Math.min); // Schließen 15×15
+        const label = new Int32Array(sw * sh);
+        let best = 0, bestSize = 0;
+        for (let s = 0, id = 0; s < m.length; s++) {
+            if (!m[s] || label[s]) continue;
+            id++;
+            let size = 0;
+            const stack = [s];
+            label[s] = id;
+            while (stack.length) {
+                const p = stack.pop(), px0 = p % sw, py0 = (p - px0) / sw;
+                size++;
+                for (let dy = -1; dy <= 1; dy++) {
+                    for (let dx = -1; dx <= 1; dx++) {
+                        const nx = px0 + dx, ny = py0 + dy, q = ny * sw + nx;
+                        if (nx >= 0 && ny >= 0 && nx < sw && ny < sh && m[q] && !label[q]) { label[q] = id; stack.push(q); }
+                    }
+                }
+            }
+            if (size > bestSize) { bestSize = size; best = id; }
+        }
+        if (bestSize < m.length * 0.05) return null; // kein Papier erkannt → ganzes Bild verwenden
+        const mask = new Uint8Array(m.length);
+        for (let s = 0; s < m.length; s++) mask[s] = label[s] === best ? 1 : 0;
+        return { mask, sw, sh, step };
+    }
+
+    /**
+     * Aufbereitung für OCR (Breite 1200–2400 px): Graustufen, Beleuchtung ausgleichen (durch den geglätteten
+     * Papierhintergrund teilen), Kontrast strecken, auf den Bon zuschneiden und den Hintergrund weiß machen –
+     * Tischdecke & Co. erzeugen sonst Buchstabenmüll am Zeilenende, an dem die Preiserkennung scheitert.
+     */
     function ocrCanvas(img) {
-        const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+        const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
         let scale = 1;
-        if (w < 1200) scale = 1200 / w;
-        if (w * scale > 2400) scale = 2400 / w;
+        if (iw < 1200) scale = 1200 / iw;
+        if (iw * scale > 2400) scale = 2400 / iw;
+        const w = Math.round(iw * scale), h = Math.round(ih * scale);
+        const src = document.createElement('canvas');
+        src.width = w;
+        src.height = h;
+        const sctx = src.getContext('2d', { willReadFrequently: true });
+        sctx.drawImage(img, 0, 0, w, h);
+        const px = sctx.getImageData(0, 0, w, h).data;
+
+        const gray = new Float32Array(w * h);
+        for (let i = 0, j = 0; j < gray.length; i += 4, j++) gray[j] = Math.floor(0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2]);
+        const bg = boxBlur(rankFilter(gray, w, h, 8, Math.max), w, h, 25);
+        const hist = new Uint32Array(256);
+        for (let j = 0; j < gray.length; j++) {
+            gray[j] = Math.min(255, gray[j] / Math.max(1, bg[j]) * 255);
+            hist[gray[j] | 0]++;
+        }
+        const pct = (p) => { let n = 0, v = 0; while (v < 255 && (n += hist[v]) < gray.length * p) v++; return v; };
+        const lo = pct(0.01), range = Math.max(1, pct(0.99) - lo);
+
+        const paper = paperMask(px, w, h);
+        let x0 = 0, y0 = 0, x1 = w - 1, y1 = h - 1;
+        const onPaper = (x, y) => !paper || paper.mask[Math.min(paper.sh - 1, (y / paper.step) | 0) * paper.sw + Math.min(paper.sw - 1, (x / paper.step) | 0)];
+        if (paper) {
+            x0 = w; y0 = h; x1 = 0; y1 = 0;
+            for (let y = 0; y < paper.sh; y++) {
+                for (let x = 0; x < paper.sw; x++) {
+                    if (!paper.mask[y * paper.sw + x]) continue;
+                    x0 = Math.min(x0, x * paper.step); x1 = Math.max(x1, (x + 1) * paper.step - 1);
+                    y0 = Math.min(y0, y * paper.step); y1 = Math.max(y1, (y + 1) * paper.step - 1);
+                }
+            }
+            x1 = Math.min(w - 1, x1); y1 = Math.min(h - 1, y1);
+        }
         const c = document.createElement('canvas');
-        c.width = Math.round(w * scale);
-        c.height = Math.round(h * scale);
-        const ctx = c.getContext('2d', { willReadFrequently: true });
-        ctx.drawImage(img, 0, 0, c.width, c.height);
-        const d = ctx.getImageData(0, 0, c.width, c.height);
-        const px = d.data;
-        let min = 255, max = 0;
-        const gray = new Uint8ClampedArray(px.length / 4);
-        for (let i = 0, j = 0; i < px.length; i += 4, j++) {
-            const g = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
-            gray[j] = g;
-            if (g < min) min = g;
-            if (g > max) max = g;
+        c.width = x1 - x0 + 1;
+        c.height = y1 - y0 + 1;
+        const ctx = c.getContext('2d');
+        const out = ctx.createImageData(c.width, c.height);
+        for (let y = y0, o = 0; y <= y1; y++) {
+            for (let x = x0; x <= x1; x++, o += 4) {
+                const v = onPaper(x, y) ? Math.max(0, Math.min(255, (gray[y * w + x] - lo) / range * 255)) : 255;
+                out.data[o] = out.data[o + 1] = out.data[o + 2] = v;
+                out.data[o + 3] = 255;
+            }
         }
-        const range = Math.max(1, max - min);
-        for (let i = 0, j = 0; i < px.length; i += 4, j++) {
-            let v = ((gray[j] - min) / range) * 255;
-            v = v < 128 ? v * 0.7 : Math.min(255, v * 1.15); // Text dunkler, Papier heller
-            px[i] = px[i + 1] = px[i + 2] = v;
-        }
-        ctx.putImageData(d, 0, 0);
+        ctx.putImageData(out, 0, 0);
         return c;
     }
 
@@ -81,14 +190,16 @@
                 langPath: base,
                 logger: (m) => { if (m.status === 'recognizing text' && onProgress) onProgress(m.progress); },
             });
-            await worker.setParameters({ preserve_interword_spaces: '1' });
+            // PSM 4 (eine Spalte, unterschiedlich große Zeilen) liest Bons deutlich besser als der Standard (6)
+            await worker.setParameters({ preserve_interword_spaces: '1', tessedit_pageseg_mode: '4' });
         }
         const texts = [];
         for (let i = 0; i < canvases.length; i++) {
             const { data } = await worker.recognize(canvases[i]);
             texts.push(data.text);
         }
-        return texts.join('\n');
+        // "\f" trennt die Fotos – der Server fügt überlappende Aufnahmen eines langen Bons zusammen
+        return texts.join('\n\f\n');
     }
 
     async function pdfToCanvases(file, maxPages = 5) {

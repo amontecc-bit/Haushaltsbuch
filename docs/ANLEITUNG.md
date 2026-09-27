@@ -176,6 +176,7 @@ auf Obst oder Süßes entfällt und wie sich der Preis der Milch entwickelt.
 
 > Die Kamera funktioniert nur, wenn das Haushaltsbuch über **https://** aufgerufen wird.
 > Für gute Ergebnisse den Bon glatt auf einen dunklen Untergrund legen und gerade von oben fotografieren.
+> Bei langen Bons sollen sich die Fotos etwas überlappen – doppelt erkannte Posten werden automatisch zusammengeführt.
 
 ### PDF oder von Hand
 

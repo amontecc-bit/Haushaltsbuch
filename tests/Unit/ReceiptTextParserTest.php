@@ -76,4 +76,66 @@ final class ReceiptTextParserTest extends TestCase
         $r = ReceiptTextParser::parse("EDEKA\nGURKE   0, 79 B\nTOMATEN   2,4O B\nSUMME  3,19");
         self::assertSame(3.19, $this->sum($r['items']));
     }
+
+    /** EDEKA/Marktkauf-PDF: Steuerklasse am Preis, Menge vor dem Namen ("€" steht für "St") */
+    public function testEdekaPdf(): void
+    {
+        $text = "Marktkauf  7204 Bad Salzuflen\nEUR\n10€ x 1,99E.Hygiene-Einlagen\t19,90B\nG&G Vollwaschpulv.\t3,35B\n"
+            . "BANANEN EDEKA\t1,44AW\nTCM Regenjacke\t29,99*B\nOetk.Lüb.Marzipan\t3,79A\nKleberabatt 10%\t-0,38\n"
+            . "----------Posten: 15\nSUMME € 58,09\nEC-Cash\t58,09€\nDatum:                        14.09.2026\n"
+            . "MwSt\tNETTO MwSt UMSATZ\nA7%\t5,72 0,40 6,12";
+        $r = ReceiptTextParser::parse($text);
+        self::assertSame('EDEKA', $r['store']);
+        self::assertSame('2026-09-14', $r['date']);
+        self::assertSame(58.09, $r['total']);
+        self::assertCount(5, $r['items']);
+        self::assertSame(58.09, $this->sum($r['items']));
+        self::assertSame(['E.Hygiene-Einlagen', 10.0, 1.99, 19.90], [$r['items'][0]['name'], $r['items'][0]['quantity'], $r['items'][0]['unit_price'], $r['items'][0]['total_price']]);
+        self::assertSame(3.41, $r['items'][4]['total_price'], 'Rabatt beim vorherigen Posten abgezogen');
+    }
+
+    /** REWE-Onlinerechnung: Menge + Steuerklasse vor den Preisen, geschützte Leerzeichen, umbrochene Namen, Rückgabe */
+    public function testReweInvoicePdf(): void
+    {
+        $nb = "\u{00A0}";
+        $text = "Rechnung\nREWE Markt GmbH\nBestelldatum 05.08.2026\nProdukt\nMenge MwSt.EinzelpreisGesamt\n"
+            . "Frosch Senses Sensitivseife 500ml\t1 A 2,49{$nb}€ 2,49{$nb}€\n"
+            . "ja! H-Vollmilch 3,5% 1l\t12 B 0,95{$nb}€11,40{$nb}€\n"
+            . "Mövenpick Gourmet-Frühstück Schwarze Johannisbeeren \nFruchtaufstrich 250g\n1 B 3,59{$nb}€ 3,59{$nb}€\n"
+            . "Pfandtasche*\t8 A 0,50{$nb}€ 4,00{$nb}€\nPfandtasche*\t-9 A 0,50{$nb}€-4,50{$nb}€\n"
+            . "Gesamtsumme\t16,98{$nb}€";
+        $r = ReceiptTextParser::parse($text);
+        self::assertSame(16.98, $r['total']);
+        self::assertCount(5, $r['items']);
+        self::assertSame(16.98, $this->sum($r['items']));
+        self::assertSame(['ja! H-Vollmilch 3,5% 1l', 12.0, 0.95], [$r['items'][1]['name'], $r['items'][1]['quantity'], $r['items'][1]['unit_price']]);
+        self::assertSame('Mövenpick Gourmet-Frühstück Schwarze Johannisbeeren Fruchtaufstrich 250g', $r['items'][2]['name']);
+        self::assertSame([9.0, -0.5, -4.5], [$r['items'][4]['quantity'], $r['items'][4]['unit_price'], $r['items'][4]['total_price']]);
+    }
+
+    /** Aldi-Fotobon: Rauschen hinter "Preis € Klasse", Stiftstriche und Krümel im Namen, Datum mit Kommas */
+    public function testAldiPhotoNoise(): void
+    {
+        $text = "ALDI\nI FRUCHTSAFT 6 X 0,33 L          3,55,€'2\nKELLOGGS CEREALIEN   1,79€. 1\n"
+            . "PURINA ONE 750 ——— —— — — 3,89 € 17\nBIO MÖHREN NL ;          1,11 € 1 |\nZOTT SAHNEJOGHURT   0,99 €i1\n"
+            . "KASSELER NACKENB. XXL          8,73 € |\nZU ZAHLEN                    20,06 €\n/Da um, 25,09,26   18:03 Uhr";
+        $r = ReceiptTextParser::parse($text);
+        self::assertSame('2026-09-25', $r['date']);
+        self::assertSame(
+            ['FRUCHTSAFT 6 X 0,33 L', 'KELLOGGS CEREALIEN', 'PURINA ONE 750', 'BIO MÖHREN NL', 'ZOTT SAHNEJOGHURT', 'KASSELER NACKENB. XXL'],
+            array_column($r['items'], 'name')
+        );
+        self::assertSame(20.06, $this->sum($r['items']));
+    }
+
+    /** Mehrere überlappende Fotos eines langen Bons ("\f"-getrennt): doppelte Posten nur einmal, sauberste Lesung */
+    public function testOverlappingPhotosAreMerged(): void
+    {
+        $p1 = "ALDI\nMILCH   0,99 € 1\nBROT   2,49 € 1\nKAESE   3,29 € 1\nBUTTER   1,99 € 1\nWURST   2,19 € 1";
+        $p2 = "|| KA3SE   3,29 € 1\nBUTTER   1,99 € 1\nWURST   2,19 € 1\nAPFEL   1,49 € 1\nANLEN   14,44 €\n";
+        $p3 = "APFEL   1,49 € 1\nBIRNE   2,00 € 1\nZU ZAHLEN   14,44 €\nDatum 25.09.26";
+        $r = ReceiptTextParser::parse($p1 . "\n\f\n" . $p2 . "\n\f\n" . $p3);
+        self::assertSame(['MILCH', 'BROT', 'KAESE', 'BUTTER', 'WURST', 'APFEL', 'BIRNE'], array_column($r['items'], 'name'));
+        self::assertSame(14.44, $this->sum($r['items']));
+    }
 }

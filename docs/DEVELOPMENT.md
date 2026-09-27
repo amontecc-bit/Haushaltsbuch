@@ -36,8 +36,12 @@ Hash = Konto | Datum | Cent | normalisierter Empfänger+Zweck | laufende Nummer 
 Kopfzeile, Groß-/Kleinschreibung egal) und eine Beispieldatei unter `tests/fixtures/` + Test in `CsvImportServiceTest`.
 
 **Einkauf erfassen** (`purchases/form.php` + `public/assets/js/purchase.js`, Alpine-Komponente `purchaseForm`):
-- Foto: Bild wird im Browser auf ≤2400 px JPEG verkleinert; lokal → Graustufen/Kontrast → Tesseract.js (`deu`) →
-  Text + Bilder an `POST /purchases/recognize` (`mode=local`); KI → nur Bilder (`mode=ai`).
+- Foto: Bild wird im Browser auf ≤2400 px JPEG verkleinert; lokal → `ocrCanvas()` (Graustufen, Beleuchtung
+  ausgleichen, Kontrast strecken, auf das Papier zuschneiden, Hintergrund weiß) → Tesseract.js (`deu`, PSM 4) →
+  Text + Bilder an `POST /purchases/recognize` (`mode=local`); KI → nur Bilder (`mode=ai`). Die Texte mehrerer
+  Fotos sind durch `` getrennt; `ReceiptTextParser` liest jedes Foto einzeln und führt die Überlappung
+  zusammen (LCS über ähnliche Posten). Ohne Zuschnitt erzeugt der Untergrund Buchstabenmüll am Zeilenende,
+  an dem die Preiserkennung scheitert (Test mit 3 Fotos eines Aldi-Bons: vorher 1, nachher 31 von 48 Posten).
 - PDF: Server liest Text mit `smalot/pdfparser`; hat das PDF keine Textebene → Antwort `needs_ocr` + `token`,
   der Browser rendert Seiten mit pdf.js, macht OCR und schickt den Text mit demselben `token` nach.
 - Hochgeladene Dateien liegen bis zum Speichern in `storage/uploads/tmp/{token}/` (nach 24 h aufgeräumt) und werden
