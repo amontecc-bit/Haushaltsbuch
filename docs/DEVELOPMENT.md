@@ -42,6 +42,10 @@ Kopfzeile, Groß-/Kleinschreibung egal) und eine Beispieldatei unter `tests/fixt
   Fotos sind durch `` getrennt; `ReceiptTextParser` liest jedes Foto einzeln und führt die Überlappung
   zusammen (LCS über ähnliche Posten). Ohne Zuschnitt erzeugt der Untergrund Buchstabenmüll am Zeilenende,
   an dem die Preiserkennung scheitert (Test mit 3 Fotos eines Aldi-Bons: vorher 1, nachher 31 von 48 Posten).
+  OCR-Text wird mit `parse($text, true)` gelesen: Postenzeilen ohne lesbaren Preis werden Platzhalter
+  (`total_price = null`, `missing`), halb lesbare Preise („3'00“) Vorschläge mit `suspect`; Preise ab Bonsumme,
+  Ausreißer und „PFANDWERT 1,50“ = 15,00 werden markiert; eine verlesene Summenzeile („AHLEN 115,51“) beendet die
+  Posten. `ocr` enthält bei markierten Posten die gelesene Zeile. Das Formular zeigt „x von y Posten erkannt“.
 - PDF: Server liest Text mit `smalot/pdfparser`; hat das PDF keine Textebene → Antwort `needs_ocr` + `token`,
   der Browser rendert Seiten mit pdf.js, macht OCR und schickt den Text mit demselben `token` nach.
 - Hochgeladene Dateien liegen bis zum Speichern in `storage/uploads/tmp/{token}/` (nach 24 h aufgeräumt) und werden

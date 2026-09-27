@@ -103,7 +103,14 @@ $init = [
     <form @submit.prevent="save()" x-show="mode === 'manual' || recognized" x-cloak>
         <div class="alert alert-info d-flex gap-2 align-items-center py-2" x-show="recognized && !<?= $isEdit ? 'true' : 'false' ?>">
             <i class="bi bi-check2-circle"></i>
-            <div class="flex-grow-1 small">Erkannt: <strong x-text="items.length"></strong> Posten. Bitte kurz prüfen – <span class="badge text-bg-warning">gelb</span> markierte Kategorien sind Vorschläge.</div>
+            <div class="flex-grow-1 small">
+                Erkannt: <strong x-text="stats ? stats.found + ' von ' + stats.rows : items.length"></strong> Posten.
+                <span x-show="stats && stats.missing"><span class="badge text-bg-danger" x-text="openCount() + ' ohne Preis'"></span> –
+                    diese Zeilen stehen auf dem Bon, waren aber nicht lesbar. Bitte mit dem Bon vergleichen und ergänzen.</span>
+                <span x-show="stats && stats.unsure"><span class="badge text-bg-warning" x-text="stats.unsure + ' unsicher'"></span> –
+                    <span class="text-warning-emphasis">gelb umrandete</span> Preise sind geraten oder auffällig.</span>
+                Bitte kurz prüfen – <span class="badge text-bg-warning">gelb</span> markierte Kategorien sind Vorschläge.
+            </div>
             <button type="button" class="btn btn-sm btn-outline-secondary" @click="recognized = false">Neu einlesen</button>
         </div>
 
@@ -116,10 +123,10 @@ $init = [
                     </div>
                     <div class="card-body p-2">
                         <template x-for="(it, i) in items" :key="it.key">
-                            <div class="item-card" :class="it.suggested && 'suggested'">
+                            <div class="item-card" :class="{ suggested: it.suggested, missing: isOpen(it) }">
                                 <div class="item-row">
                                     <input class="form-control form-control-sm" placeholder="Artikel" x-model="it.name" list="products" @change="onName(it)" :id="'item-' + it.key">
-                                    <input class="form-control form-control-sm text-end" placeholder="0,00" inputmode="decimal" x-model="it.total" @keydown.enter.prevent="addItem(true)" @input="it.corrected = false" :class="it.corrected && 'border-warning bg-warning-subtle'" :title="it.corrected ? 'Automatisch korrigiert, damit die Summe zum Beleg passt – bitte prüfen' : ''">
+                                    <input class="form-control form-control-sm text-end" inputmode="decimal" x-model="it.total" @keydown.enter.prevent="addItem(true)" @input="it.corrected = false; it.suspect = ''" :placeholder="it.missing ? 'Preis?' : '0,00'" :class="isOpen(it) ? 'border-danger bg-danger-subtle' : ((it.corrected || it.suspect) && 'border-warning bg-warning-subtle')" :title="it.suspect || (it.corrected ? 'Automatisch korrigiert, damit die Summe zum Beleg passt – bitte prüfen' : '')">
                                 </div>
                                 <div class="item-row2">
                                     <input class="form-control form-control-sm text-end" x-model="it.quantity" inputmode="decimal" :title="'Menge' + (it.unit ? ' (' + it.unit + ')' : '')">
@@ -132,6 +139,9 @@ $init = [
                                     <button type="button" class="btn btn-sm btn-outline-danger" @click="items.splice(i, 1)" aria-label="Entfernen"><i class="bi bi-trash"></i></button>
                                 </div>
                                 <div class="small text-body-secondary mt-1" x-show="unitPrice(it)" x-text="unitPrice(it)"></div>
+                                <div class="small text-body-secondary mt-1 text-truncate" x-show="it.ocr && (isOpen(it) || it.suspect)" :title="it.ocr">
+                                    <i class="bi bi-eye"></i> gelesen: <span class="font-monospace" x-text="it.ocr"></span>
+                                </div>
                             </div>
                         </template>
                         <datalist id="products">

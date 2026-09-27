@@ -57,7 +57,7 @@ Header `X-CSRF-Token`); `HB.post()` in `public/assets/js/app.js` setzt den Heade
 | `TransactionService` | Anlegen inkl. Umbuchungen (2 Buchungen mit gleicher `transfer_group`) |
 | `CsvImportService` | Kodierung, Trennzeichen, Kopfzeilen-Suche, Profil-Erkennung, Datensätze, stabile Hashes (Duplikate) |
 | `CategorizationService` + `CategoryKeywords` | Vorschläge: eigene Regeln → Historie/bekanntes Produkt → ähnliches Produkt → Stichwörter |
-| `ReceiptTextParser` | Bontext/PDF-Text → Geschäft, Datum, Summe, Posten; toleriert OCR-Fehler, heilt Einzelziffern über die Summe; mehrere Fotos (``-getrennt) werden einzeln gelesen und überlappend zusammengeführt; kennt EDEKA/Marktkauf-PDF-Bons und REWE-Onlinerechnungen |
+| `ReceiptTextParser` | Bontext/PDF-Text → Geschäft, Datum, Summe, Posten; toleriert OCR-Fehler, heilt Einzelziffern über die Summe; mehrere Fotos (``-getrennt) werden einzeln gelesen und überlappend zusammengeführt; mit `$ocr = true` Platzhalter (`missing`) für unlesbare Zeilen und `suspect` für geratene/unplausible Preise; kennt EDEKA/Marktkauf-PDF-Bons und REWE-Onlinerechnungen |
 | `AiReceiptRecognizer` | Claude API (offizielles PHP-SDK, Beta-Messages mit `fallbacks: 'default'`), JSON-Schema-Ausgabe |
 | `ReportService` | Summen/Kategorien/Monatsverläufe; mit Einkauf verknüpfte Buchungen optional nach Posten aufgeteilt; Umbuchungen nur bei Kontofilter |
 | `ForecastService` | Prognose: Saldo heute + Fixkosten-Termine + variabler Monatssaldo je Konto – Ø (ohne `recurring_id`/Umbuchungen/erkannte Import-Paare/ausgeklammerte Kategorien) oder Handwert aus einem Szenario |
@@ -110,7 +110,7 @@ Header `X-CSRF-Token`); `HB.post()` in `public/assets/js/app.js` setzt den Heade
 
 ## Status / mögliche nächste Schritte
 
-Alle geplanten Module sind umgesetzt und getestet (56 PHPUnit-Tests; Browser-Durchlauf Foto → lokale OCR → Speichern).
+Alle geplanten Module sind umgesetzt und getestet (58 PHPUnit-Tests; Browser-Durchlauf Foto → lokale OCR → Speichern).
 Noch nicht real getestet: Kamera auf echtem Smartphone (braucht HTTPS), KI-Erkennung mit echtem API-Schlüssel.
 Ideen: Budgets je Kategorie mit Warnung, Sparziele, Bearbeiten von CSV-Profilen in der Oberfläche,
 Konten-Export/Backup, E-Mail-Einladung für Familienmitglieder, Zwei-Faktor-Login.

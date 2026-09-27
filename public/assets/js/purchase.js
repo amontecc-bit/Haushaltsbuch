@@ -1,7 +1,7 @@
 /* Einkauf erfassen: Posten, Kamera, lokale OCR (Tesseract.js), PDF (pdf.js), KI-Erkennung */
 (function () {
     let keySeq = 0;
-    const newItem = (d = {}) => Object.assign({ key: ++keySeq, name: '', quantity: 1, unit: '', total: '', category: '', suggested: false }, d);
+    const newItem = (d = {}) => Object.assign({ key: ++keySeq, name: '', quantity: 1, unit: '', total: '', category: '', suggested: false, missing: false, suspect: '', ocr: '' }, d);
 
     /** Skript einmalig nachladen */
     const loaded = {};
@@ -230,6 +230,7 @@
             rawText: '',
             recognized: !!init.id,
             bonTotal: null,
+            stats: null,         // lokale Erkennung: {rows, found, missing, unsure}
             busy: false,
             status: '',
             progress: 0,
@@ -363,9 +364,15 @@
                 if (r.store) this.store = r.store;
                 this.bonTotal = r.total ?? null;
                 this.items = (r.items || []).map((i) => newItem({
-                    name: i.name, quantity: i.quantity, unit: i.unit || '', total: HB.num(i.total_price),
+                    name: i.name, quantity: i.quantity, unit: i.unit || '', total: i.total_price === null ? '' : HB.num(i.total_price),
                     category: i.category_id ? String(i.category_id) : '', suggested: !!i.suggested, corrected: !!i.corrected,
+                    missing: !!i.missing, suspect: i.suspect || '', ocr: i.ocr || '',
                 }));
+                const missing = this.items.filter((i) => i.missing).length;
+                this.stats = {
+                    rows: this.items.length, found: this.items.length - missing, missing,
+                    unsure: this.items.filter((i) => i.suspect || i.corrected).length,
+                };
                 if (!this.items.length) {
                     this.error = '';
                     this.addItem(false);
@@ -413,8 +420,13 @@
                 this.link = 'existing';
                 this.transactionId = String(this.duplicate.id);
             },
+            /** Platzhalter einer unlesbaren Bonzeile, noch ohne Preis */
+            isOpen(it) { return it.missing && !String(it.total).trim(); },
+            openCount() { return this.items.filter((i) => this.isOpen(i)).length; },
             async save() {
                 this.error = '';
+                const open = this.openCount();
+                if (open && !confirm(open + (open === 1 ? ' Zeile' : ' Zeilen') + ' ohne Preis ' + (open === 1 ? 'wird' : 'werden') + ' nicht gespeichert. Trotzdem speichern?')) return;
                 // Vor dem Neubuchen noch einmal prüfen – neu gefundene Doppelbuchung erst anzeigen
                 if (this.link === 'new' && !this.dupDismissed && await this.checkDuplicate()) return;
                 if (this.link === 'existing' && !this.transactionId) { this.error = 'Bitte eine Buchung auswählen.'; return; }
@@ -424,7 +436,7 @@
                         purchase_date: this.date, store: this.store, account_id: this.accountId, note: this.note,
                         total: this.totalManual, source: this.source, raw_text: this.rawText, token: this.token,
                         link: this.link, transaction_id: this.transactionId,
-                        items: this.items.filter((i) => i.name.trim()).map((i) => ({
+                        items: this.items.filter((i) => i.name.trim() && !this.isOpen(i)).map((i) => ({
                             name: i.name, quantity: String(i.quantity).replace(',', '.'), unit: i.unit, total_price: i.total, category_id: i.category,
                         })),
                     };

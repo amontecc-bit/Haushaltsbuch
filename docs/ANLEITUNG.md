@@ -170,6 +170,11 @@ auf Obst oder Süßes entfällt und wie sich der Preis der Milch entwickelt.
    - **KI**: Die Erkennung ist deutlich genauer und schlägt auch Kategorien vor. Das Foto geht dafür an einen KI-Dienst (Claude), was wenige Cent pro Bon kostet.
      Nur verfügbar, wenn der Administrator das eingerichtet hat.
 4. Die erkannten Posten **prüfen** und bei Bedarf korrigieren. Weicht die Summe der Posten vom Bon ab, wird das angezeigt.
+   Bei der lokalen Erkennung steht oben z. B. „Erkannt: 38 von 47 Posten“. Die Liste folgt dem Bon Zeile für Zeile:
+   - **Rot gestrichelt, „Preis?“**: Die Zeile steht auf dem Bon, der Preis war aber nicht lesbar. Darunter steht, was
+     gelesen wurde. Preis vom Bon abschreiben – oder die Zeile löschen. Leere Zeilen werden beim Speichern (nach
+     Rückfrage) weggelassen.
+   - **Gelb umrandeter Preis**: geraten oder auffällig (z. B. 15,00 statt 1,50) – bitte mit dem Bon vergleichen.
 5. **Einkauf speichern**.
 
 <img src="anleitung/einkauf-foto-mobil.png" alt="Kassenbon fotografieren" width="260">

@@ -39,9 +39,13 @@ final class ReceiptTextParser
     private const TOTAL = '/(summe|zu zahlen|gesamtbetrag|gesamt|total|endbetrag|rechnungsbetrag|bar\s*eur|zahlbetrag)\b/iu';
 
     /**
-     * @return array{store:?string, date:?string, total:?float, items:array<int, array{name:string, quantity:float, unit:?string, unit_price:float, total_price:float}>}
+     * $ocr = true (Text aus Tesseract): Zeilen, die nach Posten aussehen, deren Preis aber nicht lesbar ist, kommen als
+     * Platzhalter (total_price = null, missing = true) in die Liste – so lässt sie sich Zeile für Zeile mit dem Bon
+     * vergleichen. Unplausible Preise tragen in `suspect` den Grund; `ocr` enthält dann die gelesene Zeile.
+     *
+     * @return array{store:?string, date:?string, total:?float, items:array<int, array{name:string, quantity:float, unit:?string, unit_price:?float, total_price:?float, missing?:bool, suspect?:string, ocr?:string, corrected?:bool}>}
      */
-    public static function parse(string $text): array
+    public static function parse(string $text, bool $ocr = false): array
     {
         // Mehrere Fotos eines langen Bons kommen durch "\f" getrennt; sie überlappen sich meist
         $pages = array_values(array_filter(explode("\f", $text), fn ($p) => trim($p) !== ''));
@@ -51,22 +55,112 @@ final class ReceiptTextParser
         [$total] = self::detectTotal($lines);
 
         $items = [];
+        $looseTotal = null;
         foreach ($pages ?: [''] as $page) {
-            $pageItems = self::parseItems(self::lines($page));
-            if ($total !== null && count($pageItems) > 1) {
-                // Posten ab Bonsumme sind OCR-Fehler ("7195.81") oder eine verlesene Summenzeile ("AHLEN 115,51")
-                $pageItems = array_values(array_filter($pageItems, fn ($it) => abs($it['total_price']) < $total));
-            }
+            [$pageItems, $pageTotal] = self::parseItems(self::lines($page), $ocr);
+            $looseTotal ??= $pageTotal;
             $items = self::mergeOverlap($items, $pageItems);
         }
-        if ($total !== null) {
+        $total ??= $looseTotal;
+        $items = self::checkPlausibility($items, $total);
+        if ($total !== null && !array_filter($items, fn ($it) => !empty($it['missing']))) {
             $items = self::healDigits($items, $total);
         }
+        foreach ($items as &$it) {
+            // Rohzeile nur dort mitgeben, wo sie beim Vergleich mit dem Bon hilft
+            if (empty($it['missing']) && empty($it['suspect'])) {
+                unset($it['ocr']);
+            }
+        }
+        unset($it);
         return ['store' => $store, 'date' => $date, 'total' => $total, 'items' => $items];
     }
 
-    /** Posten einer Seite bzw. eines Fotos, bis zur Summenzeile */
-    private static function parseItems(array $lines): array
+    /**
+     * Unplausible Preise: ab Bonsumme (→ Platzhalter, Preis unlesbar), Ausreißer oder ein Vielfaches der Zahl im
+     * Namen ("PFANDWERT 1,50" für 15,00).
+     */
+    private static function checkPlausibility(array $items, ?float $total): array
+    {
+        $prices = array_map('abs', array_filter(array_column($items, 'total_price'), fn ($p) => $p !== null));
+        sort($prices);
+        $median = $prices ? $prices[intdiv(count($prices), 2)] : 0.0;
+
+        foreach ($items as &$it) {
+            if ($it['total_price'] === null) {
+                continue;
+            }
+            $p = abs($it['total_price']);
+            if ($total !== null && count($items) > 1 && $p >= $total) {
+                $it = self::placeholder($it['name'], $it['ocr'] ?? null);
+            } elseif (count($prices) >= 5 && $p > 20 && $p > 10 * $median) {
+                $it['suspect'] = 'Preis ungewöhnlich hoch – bitte prüfen';
+            } elseif (preg_match('/(\d+),(\d{2})\b/', $it['name'], $m) && self::isPowerOfTenOff((float) "$m[1].$m[2]", $p)) {
+                $it['suspect'] = 'Preis passt nicht zur Zahl im Namen – Komma verrutscht?';
+            }
+        }
+        unset($it);
+        return $items;
+    }
+
+    private static function isPowerOfTenOff(float $expected, float $price): bool
+    {
+        foreach ([10, 100, 1000, 0.1, 0.01] as $f) {
+            if (abs($price - $expected * $f) < 0.005) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Platzhalter für eine Zeile, die ein Posten ist, deren Preis aber nicht gelesen werden konnte */
+    private static function placeholder(string $name, ?string $line): array
+    {
+        $item = ['name' => $name, 'quantity' => 1.0, 'unit' => null, 'unit_price' => null, 'total_price' => null, 'missing' => true];
+        return $line !== null ? $item + ['ocr' => $line] : $item;
+    }
+
+    /** Verlesene Summenzeile ("AHLEN 115,51" statt "ZU ZAHLEN 115,51") */
+    private static function isTotalName(string $name): bool
+    {
+        $n = preg_replace('/[^\p{L}]/u', '', mb_strtoupper($name));
+        if (mb_strlen($n) < 4 || mb_strlen($n) > 14) {
+            return false;
+        }
+        foreach (['ZUZAHLEN', 'SUMME', 'GESAMTSUMME', 'GESAMTBETRAG', 'ZAHLBETRAG', 'ENDBETRAG'] as $w) {
+            similar_text($n, $w, $pct);
+            if ($pct >= 75) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** OCR-Zeile, die nach Posten aussieht (Name + rechts etwas), aber keinen lesbaren Preis hat */
+    private static function unreadableItem(string $line): ?array
+    {
+        if (preg_match('/\d\s*[x×]\s*\d|[x×]\s*\d+[,.]\d{2}|\/\s*k[gq]/iu', $line) || !preg_match('/\s{2,}\S|\d/u', $line)) {
+            return null; // verlesene Mengenzeile bzw. reine Textzeile (Kopf, Hinweise)
+        }
+        $parts = preg_split('/\s{2,}/u', $line, 2);
+        $name = self::cleanName($parts[0]);
+        if ($name === null || !preg_match('/\p{L}{4,}/u', $name)) {
+            return null;
+        }
+        // rechts davon ein halbwegs lesbarer Preis ("3'00 € 1", "6;79 €.1", "5.3841" = 5,38 € 1) → als Vorschlag
+        $guess = '(?<![\d,.])(\d{1,3})\s?[,.;:\'’`]\s?(\d{2})';
+        if (isset($parts[1]) ? preg_match('/' . $guess . '/u', $parts[1], $m) : preg_match('/\s' . $guess . '[^\p{L}\d]{0,4}\d?[^\p{L}\d]{0,3}$/u', $line, $m)) {
+            $price = (float) "$m[1].$m[2]";
+            return self::item($name, 1.0, null, $price, $price) + ['suspect' => 'Preis unsicher gelesen – bitte prüfen', 'ocr' => $line];
+        }
+        return self::placeholder($name, $line);
+    }
+
+    /**
+     * Posten einer Seite bzw. eines Fotos, bis zur Summenzeile.
+     * @return array{0:array, 1:?float} Posten und ggf. Betrag einer unscharf erkannten Summenzeile
+     */
+    private static function parseItems(array $lines, bool $ocr = false): array
     {
         [, $totalLine] = self::detectTotal($lines);
         if ($totalLine === null) {
@@ -82,12 +176,15 @@ final class ReceiptTextParser
         $items = [];
         $pendingQty = null; // Mengenzeile vor dem Posten (Lidl/Aldi-Stil)
         $end = $totalLine ?? count($lines);
+        $looseTotal = null;
+        $started = false; // Platzhalter erst ab dem ersten lesbaren Posten (davor steht der Kopf des Bons)
 
         for ($i = 0; $i < $end; $i++) {
             $line = $lines[$i];
 
             // Menge x Einzelpreis
             if ($q = self::parseQuantityLine($line)) {
+                $started = true;
                 $last = count($items) - 1;
                 if ($q['name'] !== null) {
                     // "2 x Milch 1,09" → eigener Posten
@@ -107,12 +204,20 @@ final class ReceiptTextParser
             }
 
             $p = self::parseItemLine($line);
+            if (self::isTotalName($p['name'] ?? preg_split('/\s{2,}/u', $line)[0])) {
+                $looseTotal = $p && $p['total'] > 0 ? $p['total'] : null;
+                break;
+            }
             if (!$p) {
+                if ($ocr && $started && ($ph = self::unreadableItem($line))) {
+                    $items[] = $ph;
+                }
                 continue;
             }
+            $started = true;
 
             // Rabatte / Abzüge dem vorherigen Posten zuordnen
-            if ($p['total'] < 0 && $items && preg_match('/rabatt|preisvorteil|nachlass|coupon|aktion|sofortrabatt|abzug|-\s*\d+\s*%|reduziert/i', $p['name'])) {
+            if ($p['total'] < 0 && $items && end($items)['total_price'] !== null && preg_match('/rabatt|preisvorteil|nachlass|coupon|aktion|sofortrabatt|abzug|-\s*\d+\s*%|reduziert/i', $p['name'])) {
                 $last = count($items) - 1;
                 $items[$last]['total_price'] = round($items[$last]['total_price'] + $p['total'], 2);
                 $items[$last]['unit_price'] = round($items[$last]['total_price'] / max(0.001, $items[$last]['quantity']), 2);
@@ -140,9 +245,9 @@ final class ReceiptTextParser
                 $unitPrice = round($p['total'] / $qty, 2);
             }
             $pendingQty = null;
-            $items[] = self::item($p['name'], $qty, $unit, $unitPrice, $p['total']);
+            $items[] = self::item($p['name'], $qty, $unit, $unitPrice, $p['total']) + ($ocr ? ['ocr' => $line] : []);
         }
-        return $items;
+        return [$items, $looseTotal];
     }
 
     /**
@@ -183,7 +288,7 @@ final class ReceiptTextParser
         // echte Überlappung: reicht bis ans Ende des alten und beginnt am Anfang des neuen Fotos; mind. 2 Treffer –
         // oder genau einer, wenn es der letzte Posten des alten und (fast) der erste des neuen Fotos ist
         $single = count($pairs) === 1 && $pairs[0][0] === $la - 1 && $pairs[0][1] <= 1;
-        if (!$pairs || (count($pairs) < 2 && !$single) || $la - 1 - end($pairs)[0] > 4 || $pairs[0][1] > 4) {
+        if (!$pairs || (count($pairs) < 2 && !$single) || $la - 1 - end($pairs)[0] > 6 || $pairs[0][1] > 6) {
             return array_merge($prev, $next);
         }
         $out = array_slice($prev, 0, $from + $pairs[0][0]);
@@ -192,7 +297,7 @@ final class ReceiptTextParser
         foreach ($pairs as [$i, $j]) {
             // nicht zugeordnete Posten zwischen den Treffern behalten (in einem Foto evtl. unlesbar)
             array_push($out, ...array_slice($a, $pi, $i - $pi), ...array_slice($b, $pj, $j - $pj));
-            $out[] = self::cleanliness($b[$j]['name']) > self::cleanliness($a[$i]['name']) ? $b[$j] : $a[$i];
+            $out[] = self::better($a[$i], $b[$j]);
             $pi = $i + 1;
             $pj = $j + 1;
         }
@@ -204,7 +309,17 @@ final class ReceiptTextParser
         $nx = preg_replace('/[^\p{L}\d]/u', '', mb_strtoupper($x['name']));
         $ny = preg_replace('/[^\p{L}\d]/u', '', mb_strtoupper($y['name']));
         similar_text($nx, $ny, $pct);
+        if ($x['total_price'] === null || $y['total_price'] === null) {
+            return $pct >= 75; // Platzhalter: nur der Name zählt
+        }
         return abs($x['total_price'] - $y['total_price']) < 0.005 ? $pct >= 55 : $pct >= 85;
+    }
+
+    /** Von zwei Lesungen desselben Postens: lieber mit Preis, dann unverdächtig, dann der sauberere Name */
+    private static function better(array $a, array $b): array
+    {
+        $rank = fn ($it) => [$it['total_price'] !== null, empty($it['suspect']), self::cleanliness($it['name'])];
+        return $rank($b) > $rank($a) ? $b : $a;
     }
 
     /** Anteil Buchstaben/Leerzeichen am Namen – OCR-Müll hat viele Sonderzeichen */

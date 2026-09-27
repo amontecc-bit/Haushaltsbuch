@@ -128,11 +128,40 @@ final class ReceiptTextParserTest extends TestCase
         self::assertSame(20.06, $this->sum($r['items']));
     }
 
+    /** OCR: unlesbare Postenzeilen werden Platzhalter, geratene Preise und Ausreißer markiert, verlesene Summe beendet */
+    public function testOcrPlaceholdersAndSuspects(): void
+    {
+        $text = "ALDI\nHerforder Str. 93 + 95, 32105 Bad\nMILCH   0,99 € 1\nPHILADELPHIA   A \\MUIt eu\n"
+            . "XXL WEISSWURST - QS   3'00 € 1\nPFANDWERT 1,50   15,00 € 2\nBROT   2,49 € 1\nKAESE   1,79 € 1\nWURST   2,19 € 1\n"
+            . "AHLEN   27,43 €\nKarte 5\nEUR 27,43";
+        $r = ReceiptTextParser::parse($text, true);
+        self::assertSame(27.43, $r['total'], 'Betrag der verlesenen Summenzeile');
+        self::assertSame(['MILCH', 'PHILADELPHIA', 'XXL WEISSWURST - QS', 'PFANDWERT 1,50', 'BROT', 'KAESE', 'WURST'], array_column($r['items'], 'name'));
+        self::assertTrue($r['items'][1]['missing']);
+        self::assertNull($r['items'][1]['total_price']);
+        self::assertSame('PHILADELPHIA  A \\MUIt eu', $r['items'][1]['ocr']);
+        self::assertSame(3.0, $r['items'][2]['total_price']);
+        self::assertStringContainsString('unsicher', $r['items'][2]['suspect']);
+        self::assertStringContainsString('Komma', $r['items'][3]['suspect']);
+        self::assertArrayNotHasKey('ocr', $r['items'][0], 'Rohzeile nur bei markierten Posten');
+
+        // ohne OCR-Modus (PDF-Textebene) keine Platzhalter und keine geratenen Preise
+        self::assertCount(5, ReceiptTextParser::parse($text)["items"]);
+    }
+
+    /** Ein Preis ab Bonsumme ist verlesen: Posten bleibt als Platzhalter stehen */
+    public function testPriceAboveTotalBecomesPlaceholder(): void
+    {
+        $r = ReceiptTextParser::parse("ALDI\nMILCH   0,99 € 1\nPFANDWERT   1500,00 € 2\nBROT   2,49 € 1\nZU ZAHLEN   4,98 €", true);
+        self::assertSame([0.99, null, 2.49], array_column($r['items'], 'total_price'));
+        self::assertTrue($r['items'][1]['missing']);
+    }
+
     /** Mehrere überlappende Fotos eines langen Bons ("\f"-getrennt): doppelte Posten nur einmal, sauberste Lesung */
     public function testOverlappingPhotosAreMerged(): void
     {
         $p1 = "ALDI\nMILCH   0,99 € 1\nBROT   2,49 € 1\nKAESE   3,29 € 1\nBUTTER   1,99 € 1\nWURST   2,19 € 1";
-        $p2 = "|| KA3SE   3,29 € 1\nBUTTER   1,99 € 1\nWURST   2,19 € 1\nAPFEL   1,49 € 1\nANLEN   14,44 €\n";
+        $p2 = "|| KA3SE   3,29 € 1\nBUTTER   1,99 € 1\nWURST   2,19 € 1\nAPFEL   1,49 € 1\nAHLEN   14,44 €\n";
         $p3 = "APFEL   1,49 € 1\nBIRNE   2,00 € 1\nZU ZAHLEN   14,44 €\nDatum 25.09.26";
         $r = ReceiptTextParser::parse($p1 . "\n\f\n" . $p2 . "\n\f\n" . $p3);
         self::assertSame(['MILCH', 'BROT', 'KAESE', 'BUTTER', 'WURST', 'APFEL', 'BIRNE'], array_column($r['items'], 'name'));

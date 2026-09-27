@@ -181,7 +181,7 @@ final class PurchaseController extends Controller
                 $result = (new AiReceiptRecognizer($key, $model))->recognize(array_slice($files, 0, 5), $categories);
                 $source = 'ai';
             } elseif ($text !== '') {
-                $result = ReceiptTextParser::parse($text);
+                $result = ReceiptTextParser::parse($text, true); // OCR: Platzhalter für unlesbare Zeilen
                 $source = 'ocr';
             } else {
                 $pdf = array_values(array_filter($files, fn ($f) => $f['mime'] === 'application/pdf'))[0] ?? null;
