@@ -157,6 +157,28 @@ final class ReceiptTextParserTest extends TestCase
         self::assertTrue($r['items'][1]['missing']);
     }
 
+    /** Leergut drückt die Bonsumme unter einen Posten: Postensumme geht auf, also nichts verlesen */
+    public function testDepositReturnBelowItemPriceKeepsPrices(): void
+    {
+        $text = "EDEKA\nKISTE WASSER   5,99 B\nLEERGUT   -3,30 A\nSUMME EUR   2,69";
+        foreach ([true, false] as $ocr) {
+            $r = ReceiptTextParser::parse($text, $ocr);
+            self::assertSame([5.99, -3.30], array_column($r['items'], 'total_price'), $ocr ? 'OCR' : 'PDF');
+            foreach ($r['items'] as $it) {
+                self::assertArrayNotHasKey('missing', $it);
+                self::assertArrayNotHasKey('suspect', $it);
+            }
+        }
+    }
+
+    /** PDF-Textebene ist exakt: Preis ab Bonsumme wird nur markiert, nicht verworfen */
+    public function testPdfPriceAboveTotalIsOnlySuspect(): void
+    {
+        $r = ReceiptTextParser::parse("ALDI\nMILCH   0,99 € 1\nPFANDWERT   1500,00 € 2\nBROT   2,49 € 1\nZU ZAHLEN   4,98 €");
+        self::assertSame([0.99, 1500.0, 2.49], array_column($r['items'], 'total_price'));
+        self::assertStringContainsString('Bonsumme', $r['items'][1]['suspect']);
+    }
+
     /** Mehrere überlappende Fotos eines langen Bons ("\f"-getrennt): doppelte Posten nur einmal, sauberste Lesung */
     public function testOverlappingPhotosAreMerged(): void
     {

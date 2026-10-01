@@ -62,7 +62,7 @@ final class ReceiptTextParser
             $items = self::mergeOverlap($items, $pageItems);
         }
         $total ??= $looseTotal;
-        $items = self::checkPlausibility($items, $total);
+        $items = self::checkPlausibility($items, $total, $ocr);
         if ($total !== null && !array_filter($items, fn ($it) => !empty($it['missing']))) {
             $items = self::healDigits($items, $total);
         }
@@ -77,22 +77,30 @@ final class ReceiptTextParser
     }
 
     /**
-     * Unplausible Preise: ab Bonsumme (→ Platzhalter, Preis unlesbar), Ausreißer oder ein Vielfaches der Zahl im
-     * Namen ("PFANDWERT 1,50" für 15,00).
+     * Unplausible Preise: ab Bonsumme (OCR → Platzhalter, Preis unlesbar; PDF → nur markiert), Ausreißer oder ein
+     * Vielfaches der Zahl im Namen ("PFANDWERT 1,50" für 15,00). Geht die Postensumme exakt auf, ist nichts verlesen –
+     * dann drückt z. B. Leergut die Bonsumme unter einen einzelnen Posten.
      */
-    private static function checkPlausibility(array $items, ?float $total): array
+    private static function checkPlausibility(array $items, ?float $total, bool $ocr = true): array
     {
-        $prices = array_map('abs', array_filter(array_column($items, 'total_price'), fn ($p) => $p !== null));
+        $known = array_filter(array_column($items, 'total_price'), fn ($p) => $p !== null);
+        $prices = array_map('abs', $known);
         sort($prices);
         $median = $prices ? $prices[intdiv(count($prices), 2)] : 0.0;
+        $sumMatches = $total !== null && count($known) === count($items)
+            && abs(round(array_sum($known), 2) - $total) < 0.005;
 
         foreach ($items as &$it) {
             if ($it['total_price'] === null) {
                 continue;
             }
             $p = abs($it['total_price']);
-            if ($total !== null && count($items) > 1 && $p >= $total) {
-                $it = self::placeholder($it['name'], $it['ocr'] ?? null);
+            if ($total !== null && !$sumMatches && count($items) > 1 && $it['total_price'] > 0 && $it['total_price'] >= $total) {
+                if ($ocr) {
+                    $it = self::placeholder($it['name'], $it['ocr'] ?? null);
+                } else {
+                    $it['suspect'] = 'Preis nicht kleiner als die Bonsumme – bitte prüfen';
+                }
             } elseif (count($prices) >= 5 && $p > 20 && $p > 10 * $median) {
                 $it['suspect'] = 'Preis ungewöhnlich hoch – bitte prüfen';
             } elseif (preg_match('/(\d+),(\d{2})\b/', $it['name'], $m) && self::isPowerOfTenOff((float) "$m[1].$m[2]", $p)) {
