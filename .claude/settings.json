@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "php \"$CLAUDE_PROJECT_DIR/.claude/hooks/php-check.php\"",
+            "timeout": 120,
+            "statusMessage": "php -l + PHPUnit…"
+          }
+        ]
+      }
+    ]
+  }
+}
