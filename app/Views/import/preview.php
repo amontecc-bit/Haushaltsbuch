@@ -1,7 +1,7 @@
 <?php
 use App\Services\CsvImportService;
 
-$counts = ['new' => 0, 'match' => 0, 'duplicate' => 0, 'pending' => 0];
+$counts = ['new' => 0, 'match' => 0, 'transfer' => 0, 'duplicate' => 0, 'pending' => 0];
 foreach ($records as $r) {
     $counts[$r['status']]++;
 }
@@ -10,7 +10,9 @@ $json = array_map(fn ($r) => [
     'hash' => $r['hash'], 'date' => date_de($r['date']), 'amount' => (float) $r['amount'], 'payee' => $r['payee'],
     'purpose' => mb_strimwidth($r['purpose'], 0, 120, '…'), 'status' => $r['status'], 'action' => $r['default_action'],
     'category' => $r['category_id'] ? (string) $r['category_id'] : '', 'suggestion' => $r['suggestion'],
-    'match' => $r['match'] ? date_de($r['match']['booking_date']) . ' · ' . ($r['match']['purchase_store'] ? 'Einkauf ' . $r['match']['purchase_store'] : ($r['match']['payee'] ?: 'Buchung')) : null,
+    'match' => $r['match'] ? date_de($r['match']['booking_date']) . ' · ' . ($r['match']['purchase_store'] ? 'Einkauf ' . $r['match']['purchase_store'] : ($r['match']['transfer_group'] ? 'Umbuchung' : ($r['match']['payee'] ?: 'Buchung'))) : null,
+    'transfer' => $r['transfer'] ? ['account' => $r['transfer']['account_name'],
+        'partner' => $r['transfer']['partner'] ? date_de($r['transfer']['partner']['booking_date']) : null] : null,
     'purchase' => $r['purchase'] ? 'Einkauf ' . ($r['purchase']['store'] ?: '') . ' vom ' . date_de($r['purchase']['purchase_date']) : null,
     'linkPurchase' => true,
     'recurring' => (bool) $r['recurring_id'], 'interval' => '', 'edit' => false, 'manual' => false,
@@ -114,6 +116,7 @@ $headerCells = array_values(array_filter($headerRow, fn ($c) => $c !== ''));
             <div class="d-flex flex-wrap gap-2 mb-3 small">
                 <span class="badge rounded-pill text-bg-primary"><?= $counts['new'] ?> neu</span>
                 <?php if ($counts['match']): ?><span class="badge rounded-pill text-bg-info"><?= $counts['match'] ?> passend zu vorhandenen Buchungen</span><?php endif; ?>
+                <?php if ($counts['transfer']): ?><span class="badge rounded-pill text-bg-secondary"><i class="bi bi-arrow-left-right"></i> <?= $counts['transfer'] ?> Umbuchungen zwischen eigenen Konten</span><?php endif; ?>
                 <?php if ($counts['duplicate']): ?><span class="badge rounded-pill text-bg-secondary"><?= $counts['duplicate'] ?> bereits importiert</span><?php endif; ?>
                 <?php if ($counts['pending']): ?><span class="badge rounded-pill text-bg-warning"><?= $counts['pending'] ?> vorgemerkt (werden übersprungen)</span><?php endif; ?>
                 <span class="badge rounded-pill text-bg-light border" x-text="withoutCategory() + ' ohne Kategorie'"></span>
@@ -137,6 +140,11 @@ $headerCells = array_values(array_filter($headerRow, fn ($c) => $c !== ''));
                                     <template x-if="r.status === 'duplicate'"><span class="badge text-bg-secondary">bereits importiert</span></template>
                                     <template x-if="r.status === 'pending'"><span class="badge text-bg-warning">vorgemerkt</span></template>
                                     <template x-if="r.status === 'match'"><span class="badge text-bg-info" x-text="'passt zu: ' + r.match"></span></template>
+                                    <template x-if="r.transfer && r.action === 'transfer'">
+                                        <span class="badge text-bg-secondary"><i class="bi bi-arrow-left-right"></i>
+                                            <span x-text="'Umbuchung ' + (r.amount < 0 ? 'an ' : 'von ') + r.transfer.account + (r.transfer.partner ? ' · Gegenbuchung vom ' + r.transfer.partner + ' wird verknüpft' : ' · Gegenbuchung wird angelegt')"></span>
+                                        </span>
+                                    </template>
                                     <template x-if="r.recurring"><span class="badge text-bg-light border"><i class="bi bi-arrow-repeat"></i> Dauerauftrag</span></template>
                                     <template x-if="r.purchase && r.action === 'import'">
                                         <button type="button" class="badge border" :class="r.linkPurchase ? 'text-bg-info' : 'text-bg-light text-decoration-line-through'"
@@ -144,7 +152,7 @@ $headerCells = array_values(array_filter($headerRow, fn ($c) => $c !== ''));
                                             <i class="bi bi-receipt"></i> <span x-text="r.purchase"></span>
                                         </button>
                                     </template>
-                                    <template x-if="r.status !== 'duplicate' && !r.edit">
+                                    <template x-if="r.status !== 'duplicate' && r.action !== 'transfer' && !r.edit">
                                         <button type="button" class="badge border" :class="r.category ? (r.suggestion ? 'text-bg-warning' : 'text-bg-light') : 'text-bg-danger-subtle'"
                                                 @click="r.edit = true" x-text="r.category ? catName(r.category) : 'Kategorie wählen'"></button>
                                     </template>
@@ -202,6 +210,7 @@ $headerCells = array_values(array_filter($headerRow, fn ($c) => $c !== ''));
                                     <select class="form-select form-select-sm mt-1" x-model="r.action" style="width: 9rem">
                                         <option value="import">Importieren</option>
                                         <option value="link" x-show="r.status === 'match'">Zusammenführen</option>
+                                        <option value="transfer" x-show="r.transfer">Als Umbuchung</option>
                                         <option value="skip">Überspringen</option>
                                     </select>
                                 </template>
@@ -211,9 +220,10 @@ $headerCells = array_values(array_filter($headerRow, fn ($c) => $c !== ''));
                 </div>
             </div>
             <p class="small text-body-secondary mt-2"><span class="badge text-bg-warning">gelb</span> = automatischer Kategorie-Vorschlag. „Zusammenführen“ ergänzt eine vorhandene Buchung (z. B. aus einem Dauerauftrag oder einem erfassten Einkauf) statt eine doppelte anzulegen.
+                „Als Umbuchung“ erscheint bei Überweisungen zwischen eigenen Konten (erkannt an der IBAN oder an der gegenläufigen Buchung auf dem anderen Konto) – eine schon vorhandene Gegenbuchung wird verknüpft, sonst angelegt.
                 Eine gewählte Kategorie lässt sich „als Regel merken“ – die Regel gilt sofort für passende Zeilen. „Zu Fixkosten“ legt beim Übernehmen eine wiederkehrende Buchung an.</p>
             <div class="sticky-actions d-flex gap-2 align-items-center">
-                <button class="btn btn-primary btn-lg"><i class="bi bi-check-lg"></i> <span x-text="countAction('import') + countAction('link')"></span> Buchungen übernehmen</button>
+                <button class="btn btn-primary btn-lg"><i class="bi bi-check-lg"></i> <span x-text="countAction('import') + countAction('link') + countAction('transfer')"></span> Buchungen übernehmen</button>
                 <a href="<?= e(url('/import')) ?>" class="btn btn-link">Abbrechen</a>
             </div>
         </form>

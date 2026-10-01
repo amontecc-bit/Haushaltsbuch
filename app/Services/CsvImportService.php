@@ -256,12 +256,50 @@ final class CsvImportService
     {
         $seen = [];
         foreach ($records as &$r) {
-            $norm = mb_strtolower(preg_replace('/[^\p{L}\p{N}]/u', '', $r['payee'] . '|' . $r['purpose']));
-            $base = $accountId . '|' . $r['date'] . '|' . $r['cents'] . '|' . mb_substr($norm, 0, 120);
+            $base = self::hashBase($accountId, $r['date'], $r['cents'], $r['payee'], $r['purpose']);
             $seen[$base] = ($seen[$base] ?? 0) + 1;
             $r['hash'] = sha1($base . '|' . $seen[$base]);
         }
         return $records;
+    }
+
+    /**
+     * Stammt der Hash einer gespeicherten Buchung aus ihrer eigenen Kontozeile? Nein bei Umbuchungsseiten, die früher
+     * beim Bearbeiten den Hash der Gegenseite geerbt haben – diese dürfen beim Import noch zusammengeführt werden.
+     */
+    public static function isOwnHash(array $tx): bool
+    {
+        $base = self::hashBase((int) $tx['account_id'], $tx['booking_date'], Money::toCents($tx['amount']), (string) $tx['payee'], (string) $tx['purpose']);
+        for ($n = 1; $n <= 5; $n++) {
+            if (sha1($base . '|' . $n) === $tx['import_hash']) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static function hashBase(int $accountId, string $date, int $cents, string $payee, string $purpose): string
+    {
+        $norm = mb_strtolower(preg_replace('/[^\p{L}\p{N}]/u', '', $payee . '|' . $purpose));
+        return $accountId . '|' . $date . '|' . $cents . '|' . mb_substr($norm, 0, 120);
+    }
+
+    /**
+     * Gehört die Gegenkonto-Angabe einer CSV-Zeile zu dieser IBAN? Ältere Exporte nennen statt der IBAN
+     * die Kontonummer – sie steht in deutschen IBANs in den letzten zehn Stellen.
+     */
+    public static function sameAccount(string $counter, ?string $iban): bool
+    {
+        $counter = strtoupper((string) preg_replace('/\s+/', '', $counter));
+        $iban = strtoupper((string) preg_replace('/\s+/', '', (string) $iban));
+        if ($counter === '' || $iban === '') {
+            return false;
+        }
+        if ($counter === $iban) {
+            return true;
+        }
+        return ctype_digit($counter) && ltrim($counter, '0') !== '' && strlen($counter) <= 10
+            && preg_match('/^DE\d{20}$/', $iban) && ltrim(substr($iban, -10), '0') === ltrim($counter, '0');
     }
 
     public static function parseDate(string $s): ?string

@@ -27,16 +27,27 @@ final class TransactionService
 
     /**
      * Umbuchung von $fromAccount nach $toAccount über einen positiven Betrag (Cent).
+     * $outExtra/$inExtra: Felder nur für eine Seite (z. B. import_hash – der gehört immer nur zu einem Konto).
      * @return array{0:int, 1:int} IDs der Belastung und Gutschrift
      */
-    public function createTransfer(int $householdId, int $fromAccount, int $toAccount, int $cents, string $date, array $extra = []): array
+    public function createTransfer(int $householdId, int $fromAccount, int $toAccount, int $cents, string $date, array $extra = [],
+                                   array $outExtra = [], array $inExtra = []): array
     {
         $group = bin2hex(random_bytes(16));
         $cents = abs($cents);
-        $base = $extra + ['booking_date' => $date, 'transfer_group' => $group, 'category_id' => null];
-        $out = $this->repo->create($householdId, $base + ['account_id' => $fromAccount, 'amount' => Money::toDecimal(-$cents)]);
-        $in = $this->repo->create($householdId, $base + ['account_id' => $toAccount, 'amount' => Money::toDecimal($cents)]);
+        $base = ['booking_date' => $date, 'transfer_group' => $group, 'category_id' => null];
+        $out = $this->repo->create($householdId, $outExtra + $extra + $base + ['account_id' => $fromAccount, 'amount' => Money::toDecimal(-$cents)]);
+        $in = $this->repo->create($householdId, $inExtra + $extra + $base + ['account_id' => $toAccount, 'amount' => Money::toDecimal($cents)]);
         return [$out, $in];
+    }
+
+    /** Zwei vorhandene, gegenläufige Buchungen auf verschiedenen Konten zu einer Umbuchung verbinden */
+    public function joinAsTransfer(int $householdId, int $txId, int $counterpartId): void
+    {
+        $group = bin2hex(random_bytes(16));
+        foreach ([$txId, $counterpartId] as $id) {
+            $this->repo->update($id, $householdId, ['transfer_group' => $group, 'category_id' => null]);
+        }
     }
 
     public function createFromRecurring(int $householdId, array $tpl, string $date): void

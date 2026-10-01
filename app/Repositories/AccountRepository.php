@@ -101,6 +101,18 @@ final class AccountRepository extends Repository
         }
     }
 
+    /** Mögliche Gegenkonten für Umbuchungen beim CSV-Import (auch archivierte), mit IBAN */
+    public function transferTargets(int $householdId, array $ids): array
+    {
+        if (!$ids) {
+            return [];
+        }
+        return $this->many(
+            'SELECT id, name, iban FROM accounts WHERE household_id = ? AND id IN (' . self::in($ids) . ') ORDER BY sort_order, name',
+            [$householdId, ...$ids]
+        );
+    }
+
     /** Konto per IBAN finden (für CSV-Import-Zuordnung) */
     public function findByIban(int $householdId, string $iban): ?array
     {

@@ -72,4 +72,28 @@ final class CsvImportServiceTest extends TestCase
         self::assertSame(-350, CsvImportService::parseAmount('-3.50', '.'));
         self::assertSame(123456, CsvImportService::parseAmount('1,234.56', '.'));
     }
+
+    public function testSameAccountByIbanOrOldAccountNumber(): void
+    {
+        $iban = 'DE89 3704 0044 0532 0130 00';
+        self::assertTrue(CsvImportService::sameAccount('DE89370400440532013000', $iban));
+        self::assertTrue(CsvImportService::sameAccount('de89 3704 0044 0532 0130 00', $iban));
+        self::assertTrue(CsvImportService::sameAccount('532013000', $iban), 'alte Kontonummer ohne führende Nullen');
+        self::assertTrue(CsvImportService::sameAccount('0532013000', $iban));
+        self::assertFalse(CsvImportService::sameAccount('532013001', $iban));
+        self::assertFalse(CsvImportService::sameAccount('DE02120300000000202051', $iban));
+        self::assertFalse(CsvImportService::sameAccount('', $iban));
+        self::assertFalse(CsvImportService::sameAccount('DE89370400440532013000', null), 'Konto ohne IBAN');
+        self::assertFalse(CsvImportService::sameAccount('0000000000', $iban));
+    }
+
+    public function testIsOwnHashDetectsHashInheritedFromTransferPartner(): void
+    {
+        $record = ['date' => '2026-09-01', 'cents' => -50000, 'amount' => '-500.00', 'payee' => 'Max Muster', 'purpose' => 'Sparen'];
+        $hash = CsvImportService::assignHashes(7, [$record])[0]['hash'];
+        $leg = ['account_id' => 7, 'booking_date' => '2026-09-01', 'amount' => '-500.00', 'payee' => 'Max Muster', 'purpose' => 'Sparen', 'import_hash' => $hash];
+        self::assertTrue(CsvImportService::isOwnHash($leg), 'importierte Seite');
+        // Gegenseite einer früher bearbeiteten Umbuchung: anderes Konto, Gegenbetrag, aber derselbe Hash
+        self::assertFalse(CsvImportService::isOwnHash(['account_id' => 9, 'amount' => '500.00'] + $leg), 'geerbter Hash');
+    }
 }

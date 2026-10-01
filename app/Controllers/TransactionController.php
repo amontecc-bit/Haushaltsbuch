@@ -169,22 +169,48 @@ final class TransactionController extends Controller
             'purpose'      => $data['purpose'] ?: null,
             'note'         => $data['note'] ?: null,
         ];
-        $repo->transaction(function () use ($repo, $tx, $data, $common, $id) {
+        $joined = null;
+        $repo->transaction(function () use ($repo, $tx, $data, $common, $id, &$joined) {
             $wasTransfer = (bool) $tx['transfer_group'];
             if ($wasTransfer || $data['kind'] === 'transfer') {
-                // Umbuchungen werden neu aufgebaut (beide Seiten)
+                $service = new TransactionService($repo);
+                $amount = Money::toDecimal($data['kind'] === 'income' ? $data['cents'] : -$data['cents']);
+                // Wird eine Buchung zur Umbuchung und steht die Gegenbuchung schon auf dem anderen Konto (z. B. aus dessen
+                // Kontoauszug), wird diese übernommen statt eine zweite anzulegen
+                if (!$wasTransfer && $data['kind'] === 'transfer' && in_array((int) $tx['account_id'], [$data['account_id'], $data['to_account_id']], true)) {
+                    $isOut = (int) $tx['account_id'] === $data['account_id'];
+                    $other = $isOut ? $data['to_account_id'] : $data['account_id'];
+                    $joined = $repo->transferCounterparts($this->hid, [$other], Money::toDecimal($isOut ? $data['cents'] : -$data['cents']), $data['booking_date'])[0] ?? null;
+                    if ($joined) {
+                        $repo->update($id, $this->hid, $common + ['amount' => Money::toDecimal($isOut ? -$data['cents'] : $data['cents'])]);
+                        $service->joinAsTransfer($this->hid, $id, (int) $joined['id']);
+                        return;
+                    }
+                }
+                // Umbuchungen werden neu aufgebaut (beide Seiten). Import-Kennung, Import-Lauf und Fixkosten-Zuordnung
+                // gehören zum jeweiligen Konto und bleiben dort – sonst erkennt der nächste CSV-Import die Seite nicht mehr.
+                $legs = [$tx];
                 if ($wasTransfer) {
+                    $legs[] = $repo->transferPartner($tx);
                     $repo->deleteTransferGroup($tx['transfer_group'], $this->hid);
                 } else {
                     $repo->delete($id, $this->hid);
                 }
-                $extra = $common + ['created_by' => $tx['created_by'], 'source' => $tx['source'], 'import_hash' => $tx['import_hash']];
+                $keep = function (int $accountId) use ($legs): array {
+                    foreach (array_filter($legs) as $leg) {
+                        if ((int) $leg['account_id'] === $accountId) {
+                            return ['import_hash' => $leg['import_hash'], 'import_batch_id' => $leg['import_batch_id'], 'recurring_id' => $leg['recurring_id']];
+                        }
+                    }
+                    return [];
+                };
+                $extra = $common + ['created_by' => $tx['created_by'], 'source' => $tx['source']];
                 if ($data['kind'] === 'transfer') {
-                    (new TransactionService($repo))->createTransfer($this->hid, $data['account_id'], $data['to_account_id'], $data['cents'], $data['booking_date'], $extra);
+                    $service->createTransfer($this->hid, $data['account_id'], $data['to_account_id'], $data['cents'], $data['booking_date'], $extra,
+                        $keep($data['account_id']), $keep($data['to_account_id']));
                 } else {
-                    $repo->create($this->hid, $extra + [
-                        'account_id' => $data['account_id'], 'category_id' => $data['category_id'],
-                        'amount'     => Money::toDecimal($data['kind'] === 'income' ? $data['cents'] : -$data['cents']),
+                    $repo->create($this->hid, $keep($data['account_id']) + $extra + [
+                        'account_id' => $data['account_id'], 'category_id' => $data['category_id'], 'amount' => $amount,
                     ]);
                 }
                 return;
@@ -197,7 +223,9 @@ final class TransactionController extends Controller
         });
         $this->maybeCreateRule($data);
         $return = $this->request->str('return');
-        $this->redirect(str_starts_with($return, '/transactions') ? $return : '/transactions', 'Buchung gespeichert.');
+        $msg = $joined ? 'Umbuchung gespeichert – mit der vorhandenen Gegenbuchung auf „' . $joined['account_name'] . '“ vom ' . date_de($joined['booking_date']) . ' verknüpft.'
+            : 'Buchung gespeichert.';
+        $this->redirect(str_starts_with($return, '/transactions') ? $return : '/transactions', $msg);
     }
 
     public function delete(int $id): void

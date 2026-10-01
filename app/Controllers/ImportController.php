@@ -18,6 +18,7 @@ use App\Repositories\TransactionRepository;
 use App\Services\CategorizationService;
 use App\Services\CsvImportService;
 use App\Services\RecurrenceService;
+use App\Services\TransactionService;
 
 final class ImportController extends Controller
 {
@@ -196,10 +197,11 @@ final class ImportController extends Controller
         $txRepo = new TransactionRepository();
         $purchaseRepo = new PurchaseRepository();
         $profiles = new CsvProfileRepository();
+        $txService = new TransactionService($txRepo);
 
-        $imported = $linked = $skipped = $templates = $purchases = 0;
+        $imported = $linked = $skipped = $templates = $purchases = $transfers = 0;
         $batch = $profiles->createBatch($this->hid, $state['account_id'], $state['name'], Auth::id());
-        $txRepo->transaction(function () use ($records, $actions, $cats, $recurring, $linkPurchase, $catRepo, $txRepo, $purchaseRepo, $state, $batch, &$imported, &$linked, &$skipped, &$templates, &$purchases) {
+        $txRepo->transaction(function () use ($records, $actions, $cats, $recurring, $linkPurchase, $catRepo, $txRepo, $txService, $purchaseRepo, $state, $batch, &$imported, &$linked, &$skipped, &$templates, &$purchases, &$transfers) {
             $categoryOf = function (array $r) use ($cats, $catRepo): ?int {
                 $chosen = array_key_exists($r['hash'], $cats) ? (int) $cats[$r['hash']] : ($r['category_id'] ?? null);
                 return $catRepo->validId($chosen ? (int) $chosen : null, $this->hid);
@@ -250,11 +252,35 @@ final class ImportController extends Controller
                     if (!$existing['purpose'] && $r['purpose']) {
                         $upd['purpose'] = $r['purpose'];
                     }
-                    if (!$existing['category_id'] && $cat) {
+                    // Umbuchungen haben keine Kategorie
+                    if (!$existing['category_id'] && $cat && !$existing['transfer_group']) {
                         $upd['category_id'] = $cat;
                     }
                     $txRepo->update((int) $existing['id'], $this->hid, $upd);
                     $linked++;
+                    continue;
+                }
+                $transfer = $r['transfer'];
+                if ($action === 'transfer' && $transfer && Auth::can($transfer['account_id'], 'book')) {
+                    $row = [
+                        'booking_date' => $r['date'],
+                        'payee'        => $r['payee'] ?: null,
+                        'purpose'      => $r['purpose'] ?: null,
+                        'source'       => 'csv',
+                        'created_by'   => Auth::id(),
+                    ];
+                    $own = ['import_hash' => $r['hash'], 'import_batch_id' => $batch];
+                    if ($transfer['partner']) {
+                        $txId = $txRepo->create($this->hid, $own + $row + ['account_id' => $state['account_id'], 'amount' => $r['amount']]);
+                        $txService->joinAsTransfer($this->hid, $txId, (int) $transfer['partner']['id']);
+                    } else {
+                        // Gegenseite ohne Import-Kennung – der Import des anderen Kontos führt sie später zusammen
+                        $cents = Money::toCents($r['amount']);
+                        [$from, $to] = $cents < 0 ? [$state['account_id'], $transfer['account_id']] : [$transfer['account_id'], $state['account_id']];
+                        $txService->createTransfer($this->hid, $from, $to, $cents, $r['date'], $row,
+                            $cents < 0 ? $own : [], $cents < 0 ? [] : $own);
+                    }
+                    $transfers++;
                     continue;
                 }
                 $txId = $txRepo->create($this->hid, [
@@ -282,7 +308,7 @@ final class ImportController extends Controller
                 $imported++;
             }
         });
-        $profiles->finishBatch($batch, count($records), $imported + $linked, $skipped);
+        $profiles->finishBatch($batch, count($records), $imported + $linked + $transfers, $skipped);
         if ($templates) {
             RecurrenceService::materializeDue($this->hid);
         }
@@ -290,6 +316,7 @@ final class ImportController extends Controller
         Session::forget('import');
         $msg = "$imported Buchungen importiert";
         $msg .= $linked ? ", $linked mit vorhandenen Buchungen zusammengeführt" : '';
+        $msg .= $transfers ? ", $transfers als Umbuchung übernommen" : '';
         $msg .= $purchases ? ", $purchases mit Einkäufen verknüpft" : '';
         $msg .= $templates ? ", $templates Fixkosten angelegt" : '';
         $msg .= $skipped ? ", $skipped übersprungen." : '.';
@@ -297,9 +324,10 @@ final class ImportController extends Controller
     }
 
     /**
-     * Status je Zeile: duplicate (bereits importiert), match (entspricht vorhandener Buchung, z. B. aus Dauerauftrag
-     * oder Einkauf), pending (vorgemerkt), new. Dazu Kategorie-Vorschlag, passende wiederkehrende Buchung und
-     * ein passender Einkauf ohne Buchung.
+     * Status je Zeile: duplicate (bereits importiert), match (entspricht vorhandener Buchung, z. B. aus Dauerauftrag,
+     * Einkauf oder einer Umbuchung), transfer (Umbuchung mit eigenem Konto – Gegenbuchung vorhanden oder wird angelegt),
+     * pending (vorgemerkt), new. Dazu Kategorie-Vorschlag, passende wiederkehrende Buchung und ein passender Einkauf
+     * ohne Buchung.
      */
     private function analyse(int $accountId, array $records): array
     {
@@ -311,10 +339,16 @@ final class ImportController extends Controller
             fn ($t) => !$t['to_account_id'] && (int) $t['account_id'] === $accountId
         );
         $purchaseRepo = new PurchaseRepository();
-        $usedMatches = $usedPurchases = [];
+        // Eigene Konten als mögliches Ziel einer Umbuchung (nur solche, auf die gebucht werden darf)
+        $others = array_values(array_filter(
+            (new AccountRepository())->transferTargets($this->hid, Auth::accountIds('book')),
+            fn ($a) => (int) $a['id'] !== $accountId
+        ));
+        $usedMatches = $usedPurchases = $usedCounterparts = [];
         foreach ($records as &$r) {
             $r['match'] = null;
             $r['purchase'] = null;
+            $r['transfer'] = null;
             $r['recurring_id'] = null;
             $r['category_id'] = null;
             $r['suggestion'] = null;
@@ -323,10 +357,23 @@ final class ImportController extends Controller
                 $r['default_action'] = 'skip';
                 continue;
             }
-            // Vorhandene Buchung: bevorzugt beim selben Empfänger/Geschäft, sonst nächstes Datum
-            $matches = array_filter($txRepo->matchesForImport($accountId, $r['amount'], $r['date']), fn ($m) => !isset($usedMatches[$m['id']]));
-            usort($matches, fn ($a, $b) => CategorizationService::samePayee($b['purchase_store'] ?: $b['payee'], $r['payee'])
-                <=> CategorizationService::samePayee($a['purchase_store'] ?: $a['payee'], $r['payee']));
+            // Gegenkonto per IBAN/Kontonummer: ein eigenes Konto → Umbuchung; ein fremdes → sicher keine
+            $counter = null;
+            foreach ($others as $o) {
+                if (CsvImportService::sameAccount($r['counter_iban'], $o['iban'])) {
+                    $counter = $o;
+                    break;
+                }
+            }
+            // Vorhandene Buchung: bei Umbuchungen bevorzugt deren Seite mit passendem Gegenkonto, sonst beim selben
+            // Empfänger/Geschäft, sonst nächstes Datum. Seiten mit fremdem Hash (Altlast beim Bearbeiten) zählen mit.
+            $matches = array_filter($txRepo->matchesForImport($accountId, $r['amount'], $r['date']),
+                fn ($m) => !isset($usedMatches[$m['id']]) && ($m['import_hash'] === null || !CsvImportService::isOwnHash($m)));
+            $score = fn ($m) => [
+                $counter && (int) $m['transfer_account_id'] === (int) $counter['id'],
+                CategorizationService::samePayee($m['purchase_store'] ?: $m['payee'], $r['payee']),
+            ];
+            usort($matches, fn ($a, $b) => $score($b) <=> $score($a));
             $match = $matches[0] ?? null;
             if ($match) {
                 $usedMatches[$match['id']] = true;
@@ -336,8 +383,28 @@ final class ImportController extends Controller
                 $r['category_id'] = $match['category_id'];
                 continue;
             }
+            // Umbuchung: Gegenbuchung schon auf dem anderen Konto (z. B. aus dessen Kontoauszug) → verbinden; bei
+            // erkanntem Gegenkonto sonst neu anlegen. Ohne IBAN genügt eine exakt gegenläufige Buchung (±3 Tage).
+            if (!$r['pending'] && ($counter || ($r['counter_iban'] === '' && $others))) {
+                $opposite = Money::toDecimal(-$r['cents']);
+                $candidates = array_filter(
+                    $txRepo->transferCounterparts($this->hid, $counter ? [(int) $counter['id']] : array_map('intval', array_column($others, 'id')), $opposite, $r['date'], $counter ? 5 : 3),
+                    fn ($c) => !isset($usedCounterparts[$c['id']])
+                );
+                $partner = reset($candidates) ?: null;
+                if ($partner || $counter) {
+                    if ($partner) {
+                        $usedCounterparts[$partner['id']] = true;
+                    }
+                    $r['transfer'] = [
+                        'account_id'   => (int) ($partner['account_id'] ?? $counter['id']),
+                        'account_name' => $partner['account_name'] ?? $counter['name'],
+                        'partner'      => $partner,
+                    ];
+                }
+            }
             // Einkauf (Bon/PDF) ohne Buchung mit gleicher Summe → beim Import verknüpfen
-            if ((float) $r['amount'] < 0) {
+            if ((float) $r['amount'] < 0 && !$r['transfer']) {
                 $total = Money::toDecimal(-Money::toCents($r['amount']));
                 $purchases = array_filter($purchaseRepo->unlinkedForImport($this->hid, $accountId, $total, $r['date']), fn ($p) => !isset($usedPurchases[$p['id']]));
                 usort($purchases, fn ($a, $b) => CategorizationService::samePayee($b['store'], $r['payee']) <=> CategorizationService::samePayee($a['store'], $r['payee']));
@@ -347,7 +414,7 @@ final class ImportController extends Controller
                     $r['category_id'] = $purchaseRepo->dominantCategory((int) $p['id']);
                 }
             }
-            foreach ($templates as $t) {
+            foreach ($r['transfer'] ? [] : $templates as $t) {
                 if ($t['amount'] === $r['amount']) {
                     $from = date('Y-m-d', strtotime($r['date'] . ' -5 days'));
                     $to = date('Y-m-d', strtotime($r['date'] . ' +5 days'));
@@ -358,8 +425,9 @@ final class ImportController extends Controller
                     }
                 }
             }
-            $r['status'] = $r['pending'] ? 'pending' : 'new';
-            $r['default_action'] = $r['pending'] ? 'skip' : 'import';
+            $r['status'] = $r['transfer'] ? 'transfer' : ($r['pending'] ? 'pending' : 'new');
+            $r['default_action'] = $r['transfer'] ? 'transfer' : ($r['pending'] ? 'skip' : 'import');
+            // Vorschlag auch bei Umbuchungen – falls die Zeile doch normal importiert wird
             if (empty($r['category_id'])) {
                 $s = $svc->suggestForTransaction($r['payee'], $r['purpose'] . ' ' . $r['booking_text']);
                 $r['category_id'] = $s['category_id'];

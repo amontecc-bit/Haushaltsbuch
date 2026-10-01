@@ -54,8 +54,8 @@ Header `X-CSRF-Token`); `HB.post()` in `public/assets/js/app.js` setzt den Heade
 | Service | Aufgabe |
 |---|---|
 | `RecurrenceService` | Termine wiederkehrender Buchungen (Monatsende-Clamping), `materializeDue()` bucht Fälliges – wird 1× pro Tag/Sitzung im `Controller`-Konstruktor ausgelöst (kein Cron) |
-| `TransactionService` | Anlegen inkl. Umbuchungen (2 Buchungen mit gleicher `transfer_group`) |
-| `CsvImportService` | Kodierung, Trennzeichen, Kopfzeilen-Suche, Profil-Erkennung, Datensätze, stabile Hashes (Duplikate) |
+| `TransactionService` | Anlegen inkl. Umbuchungen (2 Buchungen mit gleicher `transfer_group`); seitenbezogene Felder (`import_hash`, `import_batch_id`, `recurring_id`) getrennt je Seite; `joinAsTransfer()` verbindet zwei vorhandene Buchungen |
+| `CsvImportService` | Kodierung, Trennzeichen, Kopfzeilen-Suche, Profil-Erkennung, Datensätze, stabile Hashes (Duplikate, Hash enthält die Konto-ID), `sameAccount()` (IBAN/alte Kontonummer → eigenes Konto = Umbuchung), `isOwnHash()` |
 | `CategorizationService` + `CategoryKeywords` | Vorschläge: eigene Regeln → Historie/bekanntes Produkt → ähnliches Produkt → Stichwörter |
 | `ReceiptTextParser` | Bontext/PDF-Text → Geschäft, Datum, Summe, Posten; toleriert OCR-Fehler, heilt Einzelziffern über die Summe; mehrere Fotos (``-getrennt) werden einzeln gelesen und überlappend zusammengeführt; mit `$ocr = true` Platzhalter (`missing`) für unlesbare Zeilen und `suspect` für geratene/unplausible Preise; kennt EDEKA/Marktkauf-PDF-Bons und REWE-Onlinerechnungen |
 | `AiReceiptRecognizer` | Claude API (offizielles PHP-SDK, Beta-Messages mit `fallbacks: 'default'`), JSON-Schema-Ausgabe |
@@ -104,13 +104,16 @@ Header `X-CSRF-Token`); `HB.post()` in `public/assets/js/app.js` setzt den Heade
 - **Bash-Heredocs mit viel PHP-Quoting** sind fehleranfällig – PHP-Dateien lieber mit dem Write-Tool schreiben.
 - **Lokale DB `haushaltsbuch` enthält echte Daten der Familie** – nie zurücksetzen oder mit Testdaten füllen.
   Tests gegen eine Kopie (`mysqldump haushaltsbuch | mysql haushaltsbuch_test`), siehe `docs/DEVELOPMENT.md`.
+- **`import_hash` gehört immer nur zu einer Umbuchungsseite** (der Hash enthält die Konto-ID). Früher bekam beim
+  Bearbeiten einer Umbuchung auch die Gegenseite den Hash – dann erkannte der Import des anderen Kontos sie nicht mehr.
+  `matchesForImport()` lässt solche Altlasten deshalb noch zu (Prüfung per `CsvImportService::isOwnHash()`).
 - Headless-Chrome hat eine Mindestbreite von ~500 px (Screenshots für „mobil“ mit 520 px machen).
 - **Beim Beenden von Test-Chrome nie `taskkill /IM chrome.exe`** – das schließt auch die Browserfenster des Nutzers.
   Nur den eigenen Prozess beenden (`Popen.kill()` bzw. nach eigenem `--user-data-dir` filtern).
 
 ## Status / mögliche nächste Schritte
 
-Alle geplanten Module sind umgesetzt und getestet (60 PHPUnit-Tests; Browser-Durchlauf Foto → lokale OCR → Speichern).
+Alle geplanten Module sind umgesetzt und getestet (62 PHPUnit-Tests; Browser-Durchlauf Foto → lokale OCR → Speichern).
 Noch nicht real getestet: Kamera auf echtem Smartphone (braucht HTTPS), KI-Erkennung mit echtem API-Schlüssel.
 Ideen: Budgets je Kategorie mit Warnung, Sparziele, Bearbeiten von CSV-Profilen in der Oberfläche,
 Konten-Export/Backup, E-Mail-Einladung für Familienmitglieder, Zwei-Faktor-Login.

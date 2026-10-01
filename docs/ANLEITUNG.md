@@ -93,7 +93,8 @@ Fast alles ist anklickbar: Ein Konto führt zu seinen Buchungen, „Auswertung�
 <img src="anleitung/umbuchung-mobil.png" alt="Neue Umbuchung" width="260">
 
 - **Umbuchung** = Geld wandert zwischen zwei eigenen Konten, z. B. vom Girokonto aufs Tagesgeld. Sie zählt weder als
-  Einnahme noch als Ausgabe.
+  Einnahme noch als Ausgabe. Machst du aus einer vorhandenen Buchung nachträglich eine Umbuchung und steht die
+  Gegenbuchung schon auf dem anderen Konto (z. B. aus dessen Kontoauszug), wird diese übernommen statt doppelt angelegt.
 - **Weitere Angaben** öffnet Felder für Verwendungszweck und Notiz.
 - **Wiederholen (Dauerauftrag / Fixkosten)**: Ist der Schalter an, wird aus der Buchung gleich eine wiederkehrende Buchung
   (siehe [Fixkosten](#7-fixkosten-und-daueraufträge)).
@@ -141,6 +142,11 @@ In der **Vorschau** prüfst du jede Zeile, bevor etwas gespeichert wird:
   dieser Empfänger künftig immer so eingeordnet wird.
 - Rechts wählst du je Zeile: **Importieren**, **Überspringen** oder **Zusammenführen**. „Zusammenführen“ erscheint, wenn es
   schon eine passende Buchung gibt (z. B. aus einem Dauerauftrag oder einem erfassten Einkauf). Dann wird diese ergänzt statt doppelt angelegt.
+- **Als Umbuchung** wird vorgeschlagen, wenn Geld zwischen zwei eigenen Konten wandert. Erkannt wird das an der
+  **IBAN des Gegenkontos** (deshalb bei allen Konten die IBAN eintragen) oder – wenn der Kontoauszug keine IBAN
+  enthält – an einer genau gegenläufigen Buchung auf einem anderen Konto innerhalb von drei Tagen.
+  Steht die Gegenbuchung schon auf dem anderen Konto (z. B. aus dessen Kontoauszug), wird sie verknüpft; sonst wird
+  sie dort angelegt und beim späteren Import des anderen Kontos automatisch zusammengeführt.
 - Bereits früher importierte Zeilen werden erkannt und übersprungen. Du kannst also überlappende Zeiträume
   bedenkenlos erneut importieren.
 - **Zu Fixkosten** legt aus der Zeile gleich eine wiederkehrende Buchung an, z. B. für einen neuen Handyvertrag.
@@ -393,6 +399,11 @@ Nein. Fällige Fixkosten mit „Automatisch buchen“ werden beim ersten Öffnen
 
 **Ich habe einen Kontoauszug doppelt importiert, gibt es jetzt alles zweimal?**
 Nein. Bereits importierte Zeilen werden erkannt und übersprungen.
+
+**Ich importiere die Auszüge von Girokonto und Tagesgeld. Zählt eine Umbuchung dazwischen doppelt?**
+Nein. Beim ersten Import wird sie als Umbuchung angelegt (beide Seiten), beim Import des anderen Kontos wird dessen
+Zeile mit der schon vorhandenen Seite zusammengeführt. Am zuverlässigsten klappt das, wenn bei beiden Konten die IBAN
+eingetragen ist.
 
 **Eine Buchung aus dem Import und ein fotografierter Kassenbon betreffen denselben Einkauf. Zählt er doppelt?**
 Nicht, wenn beide verknüpft sind. Beim Speichern des Einkaufs „Vorhandene Buchung wählen“ nehmen oder beim

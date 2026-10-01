@@ -196,13 +196,36 @@ final class TransactionRepository extends Repository
      */
     public function matchesForImport(int $accountId, string $amount, string $date, int $days = 5): array
     {
+        // Umbuchungsseiten mit dem Hash der Gegenseite (Altlast beim Bearbeiten) kommen mit – der Aufrufer prüft per CsvImportService::isOwnHash()
         return $this->many(
-            "SELECT t.*, (SELECT p.store FROM purchases p WHERE p.transaction_id = t.id LIMIT 1) AS purchase_store
+            "SELECT t.*, (SELECT p.store FROM purchases p WHERE p.transaction_id = t.id LIMIT 1) AS purchase_store,
+                    (SELECT o.account_id FROM transactions o WHERE o.transfer_group = t.transfer_group AND o.id <> t.id LIMIT 1) AS transfer_account_id
              FROM transactions t
-             WHERE t.account_id = ? AND t.amount = ? AND t.import_hash IS NULL
+             WHERE t.account_id = ? AND t.amount = ?
+               AND (t.import_hash IS NULL OR (t.transfer_group IS NOT NULL AND EXISTS (SELECT 1 FROM transactions o
+                    WHERE o.transfer_group = t.transfer_group AND o.id <> t.id AND o.import_hash = t.import_hash)))
                AND t.booking_date BETWEEN DATE_SUB(?, INTERVAL ? DAY) AND DATE_ADD(?, INTERVAL ? DAY)
              ORDER BY ABS(DATEDIFF(t.booking_date, ?)) LIMIT 10",
             [$accountId, $amount, $date, $days, $date, $days, $date]
+        );
+    }
+
+    /**
+     * Gegenbuchungen für eine Umbuchung: Buchungen auf den genannten Konten mit genau diesem Betrag, die noch keine
+     * Umbuchung und keinem Einkauf zugeordnet sind – nächstgelegenes Datum zuerst.
+     */
+    public function transferCounterparts(int $householdId, array $accountIds, string $amount, string $date, int $days = 5): array
+    {
+        if (!$accountIds) {
+            return [];
+        }
+        return $this->many(
+            'SELECT t.*, a.name AS account_name FROM transactions t JOIN accounts a ON a.id = t.account_id
+             WHERE t.household_id = ? AND t.account_id IN (' . self::in($accountIds) . ') AND t.amount = ? AND t.transfer_group IS NULL
+               AND t.booking_date BETWEEN DATE_SUB(?, INTERVAL ? DAY) AND DATE_ADD(?, INTERVAL ? DAY)
+               AND NOT EXISTS (SELECT 1 FROM purchases p WHERE p.transaction_id = t.id)
+             ORDER BY ABS(DATEDIFF(t.booking_date, ?)), t.id LIMIT 10',
+            [$householdId, ...$accountIds, $amount, $date, $days, $date, $days, $date]
         );
     }
 
