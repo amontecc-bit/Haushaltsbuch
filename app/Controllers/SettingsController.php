@@ -6,8 +6,10 @@ namespace App\Controllers;
 
 use App\Core\Auth;
 use App\Core\Config;
+use App\Repositories\AccountRepository;
 use App\Repositories\HouseholdRepository;
 use App\Repositories\SettingsRepository;
+use App\Repositories\UserPreferenceRepository;
 use App\Repositories\UserRepository;
 
 final class SettingsController extends Controller
@@ -23,6 +25,9 @@ final class SettingsController extends Controller
             'envKey'     => (string) Config::get('ai.api_key') !== '',
             'hasKey'     => $settings['ai_api_key'] !== '' || (string) Config::get('ai.api_key') !== '',
             'defaultModel' => Config::get('ai.model'),
+            'prefs'      => (new UserPreferenceRepository())->all(Auth::id()),
+            'prefLabels' => UserPreferenceRepository::ACCOUNTS,
+            'bookable'   => (new AccountRepository())->options($this->hid, Auth::accountIds('book')),
         ]);
     }
 
@@ -46,6 +51,18 @@ final class SettingsController extends Controller
         $repo->set($this->hid, 'forecast_months', (string) max(1, min(60, (int) $r->int('forecast_months', 12))));
         $repo->set($this->hid, 'forecast_avg_months', (string) max(1, min(24, (int) $r->int('forecast_avg_months', 6))));
         $this->redirect('/settings', 'Einstellungen gespeichert.');
+    }
+
+    /** Persönliche Vorzugskonten (für jeden Benutzer, nur bebuchbare Konten) */
+    public function preferences(): void
+    {
+        $repo = new UserPreferenceRepository();
+        $allowed = Auth::accountIds('book');
+        foreach (array_keys(UserPreferenceRepository::ACCOUNTS) as $key) {
+            $id = (int) $this->request->int($key);
+            $repo->set(Auth::id(), $key, $id && in_array($id, $allowed, true) ? (string) $id : null);
+        }
+        $this->redirect('/settings', 'Vorzugskonten gespeichert.');
     }
 
     public function password(): void

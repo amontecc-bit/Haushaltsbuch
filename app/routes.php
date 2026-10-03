@@ -145,5 +145,6 @@ $router->get('/users/{id}/edit', [UserController::class, 'edit'], 'admin');
 $router->post('/users/{id}', [UserController::class, 'update'], 'admin');
 $router->get('/settings', [SettingsController::class, 'index']);
 $router->post('/settings', [SettingsController::class, 'update'], 'admin');
+$router->post('/settings/preferences', [SettingsController::class, 'preferences']);
 $router->post('/settings/password', [SettingsController::class, 'password']);
 $router->get('/more', [SettingsController::class, 'more']);

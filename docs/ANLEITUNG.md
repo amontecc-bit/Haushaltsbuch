@@ -33,6 +33,10 @@ Dein Zugang wird von der Person angelegt, die das Haushaltsbuch verwaltet (Admin
 Nach fünf falschen Passwörtern ist der Zugang für 15 Minuten gesperrt. Dein Passwort änderst du selbst unter
 **Einstellungen → Mein Passwort ändern**.
 
+Unter **Einstellungen → Meine Vorzugskonten** legst du fest, welches Konto bei *Einkauf erfassen* (bezahlt von),
+*Kontoauszug importieren*, *Neue Buchung* und als Ziel einer *Umbuchung* vorausgewählt ist. Jede Person hat eigene
+Vorzugskonten; ohne Vorgabe gilt beim Einkauf das zuletzt benutzte Konto, sonst das erste der Liste.
+
 ### Am Computer
 
 Links steht das Menü mit allen Bereichen. Unter **Verwaltung** findest du Konten, Kategorien, Regeln, Familie und

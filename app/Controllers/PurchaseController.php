@@ -14,6 +14,7 @@ use App\Repositories\ProductRepository;
 use App\Repositories\PurchaseRepository;
 use App\Repositories\SettingsRepository;
 use App\Repositories\TransactionRepository;
+use App\Repositories\UserPreferenceRepository;
 use App\Services\AiReceiptRecognizer;
 use App\Services\CategorizationService;
 use App\Services\ReceiptTextParser;
@@ -48,11 +49,13 @@ final class PurchaseController extends Controller
     public function create(): void
     {
         $mode = in_array($this->request->str('mode'), ['manual', 'photo', 'pdf'], true) ? $this->request->str('mode') : 'photo';
-        // Vorgabe: vom Konto buchen – zuletzt für Einkäufe benutztes Konto, sonst erstes Girokonto
+        // Vorgabe: vom Konto buchen – Vorzugskonto, sonst zuletzt für Einkäufe benutztes Konto, sonst erstes Girokonto
         $bookable = (new AccountRepository())->options($this->hid, Auth::accountIds('book'));
+        $bookableIds = array_map('intval', array_column($bookable, 'id'));
         $last = (new PurchaseRepository())->lastAccountId($this->hid, (int) Auth::id());
         $giro = array_values(array_filter($bookable, fn ($a) => $a['type'] === 'giro'));
-        $default = in_array($last, array_map('intval', array_column($bookable, 'id')), true) ? $last : ($giro[0]['id'] ?? $bookable[0]['id'] ?? null);
+        $default = (new UserPreferenceRepository())->account(Auth::id(), 'account_purchase', $bookableIds)
+            ?? (in_array($last, $bookableIds, true) ? $last : ($giro[0]['id'] ?? $bookable[0]['id'] ?? null));
         $purchase = ['id' => null, 'purchase_date' => date('Y-m-d'), 'store' => '', 'account_id' => $default, 'transaction_id' => null,
             'note' => '', 'source' => $mode === 'manual' ? 'manual' : $mode, 'total' => 0];
         $this->renderForm($purchase, [], $mode, 'Einkauf erfassen');
