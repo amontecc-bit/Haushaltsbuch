@@ -9,6 +9,8 @@ $nav = [
     ['/transactions', 'list-ul', 'Buchungen'],
     ['/purchases', 'basket', 'Einkäufe'],
     ['/shopping', 'card-checklist', 'Einkaufsliste'],
+    ['/inventory', 'box-seam', 'Vorrat'],
+    ['/recipes', 'journal-richtext', 'Rezepte'],
     ['/recurring', 'arrow-repeat', 'Fixkosten'],
     ['/import', 'upload', 'CSV-Import'],
     ['/reports', 'pie-chart', 'Auswertungen'],

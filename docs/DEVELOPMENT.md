@@ -20,6 +20,10 @@ Ergänzt `CLAUDE.md` um Details, die man beim Ändern einzelner Bereiche braucht
 | `purchases` / `purchase_items` | Einkauf (optional `account_id`, `transaction_id`, `file_path` = `|`-getrennte Pfade) und Posten |
 | `loans`, `loan_special_payments`, `loan_rate_changes` | Kreditdaten, Sondertilgungen, Zins-/Ratenänderungen ab Datum |
 | `settings` | Schlüssel/Wert je Haushalt: `ocr_mode`, `ai_api_key`, `ai_model`, `forecast_months`, `forecast_avg_months` |
+| `shopping_items` / `shopping_item_products` | virtuelle Posten (006) ↔ echte Produkte (n:m); seit 008 mit `ref_quantity`/`ref_unit` (Referenzmenge), `shelf_days`, `min_stock` (in Referenzeinheiten), `staple` (Grundvorrat), `auto_restock`, `depleted_at`; je Zuordnung `factor` und eigene `shelf_days` |
+| `shopping_lists` / `shopping_list_entries` | Einkaufslisten; `is_auto` = die automatisch gepflegte Liste (eine je Haushalt) |
+| `inventory_lots` | Vorrats-Chargen je virtuellem Posten: `quantity`/`remaining` in Referenzeinheiten, `expires_on`, `source` purchase/manual, `purchase_id` + `product_id` (Schlüssel beim Abgleich) |
+| `recipes`, `recipe_ingredients`, `recipe_class_groups`/`_values`/`_links` | Rezepte (`servings`, Freitext), Zutaten = virtueller Posten + Menge/Einheit, Klassifikation als Gruppen mit Werten |
 
 Saldo eines Kontos = `opening_balance + SUM(transactions.amount bis Stichtag)`.
 
@@ -87,11 +91,30 @@ Beim Speichern werden nur die für den Nutzer sichtbaren Prognose-Konten ersetzt
 Auswertungen (`ReportService`): ohne Kontofilter keine Umbuchungen; mit Kontofilter zählen sie mit, in den
 Kategorie-Auswertungen unter der Pseudo-ID `ReportService::TRANSFER_ID` (-2, „Umbuchungen“).
 
+**Vorrat** (`InventoryService`, Mengen intern in *Referenzeinheiten*: 1 = einmal die Referenzmenge des Postens):
+- Einkauf speichern → `PurchaseController::tickShoppingList()`: erst `ShoppingListService::matchPurchase()` (lernt ggf.
+  neue Produkt-Zuordnungen, Faktor per `guessFactor()`), dann `InventoryService::syncPurchase()`, dann `refreshAutoList()`.
+- `syncPurchase()` gleicht die Chargen eines Einkaufs über `(purchase_id, product_id)` ab – `purchase_items.id` ist
+  instabil (`replaceItems` löscht und legt neu an). Schon Verbrauchtes bleibt verbraucht (`syncLots()`).
+  Menge je Posten: `purchaseAmount()` = Anzahl × Faktor bzw. Gewicht/Volumen umgerechnet, Ablauf = Kaufdatum +
+  `shelf_days` (Produkt vor Posten, NULL = läuft nicht ab). Neue/geänderte Zuordnungen → `rebuild()` der letzten 90 Tage.
+- Bestand = Σ `remaining` der nicht abgelaufenen Chargen; Verbrauch (Kochen, Korrektur nach unten) per `consumeFifo()`
+  (zuerst ablaufende Charge). „abgelaufen“ statt „aufgebraucht“ nur, wenn die *jüngste* Charge abgelaufen ist.
+- `refreshAutoList()` (nach Einkauf/Kochen/Korrektur und 1× täglich im `Controller`-Konstruktor): Posten mit
+  `auto_restock`, ohne `staple`, mit Chargen-Historie und Bestand ≤ `min_stock` kommen auf die Liste `is_auto`;
+  `depleted_at` verhindert, dass ein von Hand abgehakter Eintrag sofort wiederkommt; wieder vorrätige werden ausgetragen.
+
+**Rezepte** (`RecipeService`): `evaluate()` rechnet Zutaten (skaliert auf Portionen) per `InventoryService::toRef()`
+in Referenzeinheiten um und vergleicht mit dem Bestand (gleicher Posten mehrfach teilt sich den Bestand, Grundvorrat
+zählt als vorhanden); `rank()` sortiert machbare zuerst, dann wenige fehlende, dann Abdeckung. Zutaten-Einheiten
+müssen zur Referenz passen (g/kg, ml/l oder Stück) – das prüft `RecipeController::validated()`.
+
 ## Tests
 
 - `tests/Unit/*Test.php` decken Money, Recurrence, CSV-Import (Fixtures Sparkasse Windows-1252, ING mit Vorspann,
   DKB, generisch), ReceiptTextParser (inkl. echter Tesseract-Ausgabe `rewe_ocr.txt`), Categorization,
-  LoanCalculator (gegen geschlossene Annuitätenformel) und Forecast ab. Controller/Views haben keine Unit-Tests.
+  LoanCalculator (gegen geschlossene Annuitätenformel), Forecast, Einkaufsliste, Vorrat (Einheiten, Faktor aus dem
+  Namen, FIFO, Chargen-Abgleich, Auto-Liste) und Rezepte (Skalierung, Fehlmengen, Sortierung) ab. Controller/Views haben keine Unit-Tests.
 - `tests/bootstrap.php` lädt Config + Helfer, **keine DB** – Services, die DB brauchen, über ihre statischen
   reinen Funktionen testen.
 

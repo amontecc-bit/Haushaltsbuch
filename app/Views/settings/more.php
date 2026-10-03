@@ -1,5 +1,8 @@
 <div class="more-grid mb-4">
     <a href="<?= e(url('/shopping')) ?>"><i class="bi bi-card-checklist"></i>Einkaufsliste</a>
+    <a href="<?= e(url('/inventory')) ?>"><i class="bi bi-box-seam"></i>Vorrat</a>
+    <a href="<?= e(url('/recipes')) ?>"><i class="bi bi-journal-richtext"></i>Rezepte</a>
+    <a href="<?= e(url('/recipes/suggestions')) ?>"><i class="bi bi-lightbulb"></i>Rezeptvorschläge</a>
     <a href="<?= e(url('/recurring')) ?>"><i class="bi bi-arrow-repeat"></i>Fixkosten</a>
     <a href="<?= e(url('/import')) ?>"><i class="bi bi-upload"></i>CSV-Import</a>
     <a href="<?= e(url('/reports')) ?>"><i class="bi bi-pie-chart"></i>Auswertungen</a>

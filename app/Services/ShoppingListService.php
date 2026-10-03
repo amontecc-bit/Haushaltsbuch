@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Repositories\ProductRepository;
 use App\Repositories\PurchaseRepository;
 use App\Repositories\ShoppingRepository;
 
@@ -17,7 +18,7 @@ use App\Repositories\ShoppingRepository;
 final class ShoppingListService
 {
     /** Einheiten für Listeneinträge (Schlüssel = gespeicherter Wert, '' = Stück) */
-    public const UNITS = ['' => 'Stück', 'kg' => 'kg', 'g' => 'g', 'l' => 'l', 'Pck' => 'Pck.'];
+    public const UNITS = ['' => 'Stück', 'kg' => 'kg', 'g' => 'g', 'l' => 'l', 'ml' => 'ml', 'Pck' => 'Pck.'];
 
     /**
      * @param array<int, array{id:int, normalized:string, product_ids:int[]}> $entries offene Listeneinträge
@@ -74,11 +75,41 @@ final class ShoppingListService
         foreach ($hits as $entryId => $hit) {
             $repo->markDone($entryId, $purchaseId);
             if ($hit['learn']) {
-                $itemId = (int) $entries[$entryId]['shopping_item_id'];
-                $repo->linkProduct($itemId, (int) $hit['product_id']);
+                $item = $repo->findItem((int) $entries[$entryId]['shopping_item_id'], $householdId);
+                $name = (string) (array_column($items, 'name', 'product_id')[$hit['product_id']] ?? '');
+                $repo->linkProduct((int) $item['id'], (int) $hit['product_id'],
+                    InventoryService::guessFactor($name, (float) $item['ref_quantity'], $item['ref_unit']));
             }
         }
         return count($hits);
+    }
+
+    /**
+     * Virtuellen Posten mit gleichem normalisierten Namen holen oder anlegen. Neue Posten bekommen eine
+     * Kategorie (Vorschlag) und das gleichnamige Produkt aus den Einkäufen, falls vorhanden.
+     */
+    public static function itemByName(int $householdId, string $name, ?int $categoryId = null): int
+    {
+        $repo = new ShoppingRepository();
+        $norm = self::normalize($name);
+        $item = $repo->findItemByNormalized($householdId, mb_substr($norm, 0, 190));
+        if ($item) {
+            return (int) $item['id'];
+        }
+        $name = mb_strtoupper(mb_substr($name, 0, 1)) . mb_substr($name, 1); // „bananen“ → „Bananen“
+        $categoryId ??= (new CategorizationService($householdId))->suggestForItem($name)['category_id'];
+        $id = $repo->createItem($householdId, $name, $norm, $categoryId);
+        $product = (new ProductRepository())->indexByNormalized($householdId)[CategorizationService::normalizeProduct($name)] ?? null;
+        if ($product) {
+            $repo->linkProduct($id, (int) $product['id']);
+        }
+        return $id;
+    }
+
+    /** Vergleichsschlüssel für virtuelle Posten (wie bei Produkten, notfalls nur kleingeschrieben) */
+    public static function normalize(string $name): string
+    {
+        return CategorizationService::normalizeProduct($name) ?: mb_strtolower(trim($name));
     }
 
     /** Menge für die Anzeige: „2“, „1,5 kg“, „3 Pck.“ */
