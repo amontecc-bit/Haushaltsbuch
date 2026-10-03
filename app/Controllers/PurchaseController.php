@@ -7,6 +7,7 @@ namespace App\Controllers;
 use App\Core\Auth;
 use App\Core\Config;
 use App\Core\Money;
+use App\Core\Session;
 use App\Repositories\AccountRepository;
 use App\Repositories\CategoryRepository;
 use App\Repositories\ProductRepository;
@@ -16,6 +17,7 @@ use App\Repositories\TransactionRepository;
 use App\Services\AiReceiptRecognizer;
 use App\Services\CategorizationService;
 use App\Services\ReceiptTextParser;
+use App\Services\ShoppingListService;
 
 final class PurchaseController extends Controller
 {
@@ -70,6 +72,7 @@ final class PurchaseController extends Controller
             $this->attachFiles($id);
             return $id;
         });
+        $this->tickShoppingList($id, $data);
         $this->json(['ok' => true, 'redirect' => url("/purchases/$id"), 'message' => 'Einkauf gespeichert.']);
     }
 
@@ -113,6 +116,7 @@ final class PurchaseController extends Controller
             $repo->replaceItems($id, $this->learnProducts($items));
             $this->handleLink($id, $data, $items, $old);
         });
+        $this->tickShoppingList($id, $data);
         $this->json(['ok' => true, 'redirect' => url("/purchases/$id"), 'message' => 'Einkauf gespeichert.']);
     }
 
@@ -305,6 +309,15 @@ final class PurchaseController extends Controller
             $error = 'Zum Anlegen einer Buchung bitte ein Konto wählen, auf das du buchen darfst.';
         }
         return [$data, $items, $error];
+    }
+
+    /** Gekaufte Posten auf den Einkaufslisten abhaken (Hinweis erscheint auf der Einkaufsseite) */
+    private function tickShoppingList(int $purchaseId, array $data): void
+    {
+        $n = ShoppingListService::matchPurchase($this->hid, $purchaseId, $data['purchase_date']);
+        if ($n) {
+            Session::flash('success', ($n === 1 ? '1 Posten' : "$n Posten") . ' der Einkaufsliste als gekauft abgehakt.');
+        }
     }
 
     /** Produkte anlegen und gewählte Kategorien lernen */

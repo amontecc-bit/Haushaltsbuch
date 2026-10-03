@@ -14,6 +14,7 @@ use App\Controllers\RecurringController;
 use App\Controllers\ReportController;
 use App\Controllers\RuleController;
 use App\Controllers\SettingsController;
+use App\Controllers\ShoppingController;
 use App\Controllers\TransactionController;
 use App\Controllers\UserController;
 
@@ -77,6 +78,27 @@ $router->get('/purchases/{id}/file', [PurchaseController::class, 'file']);
 $router->post('/purchases/recognize', [PurchaseController::class, 'recognize']);
 $router->post('/purchases/suggest', [PurchaseController::class, 'suggest']);
 $router->post('/purchases/candidates', [PurchaseController::class, 'candidates']);
+
+// Einkaufslisten & virtuelle Posten
+$router->get('/shopping', [ShoppingController::class, 'index']);
+$router->post('/shopping', [ShoppingController::class, 'store']);
+$router->get('/shopping/items', [ShoppingController::class, 'items']);
+$router->post('/shopping/items', [ShoppingController::class, 'storeItem']);
+$router->get('/shopping/assign', [ShoppingController::class, 'assign']);
+$router->post('/shopping/assign', [ShoppingController::class, 'move']);
+$router->post('/shopping/items/{id}', [ShoppingController::class, 'updateItem']);
+$router->post('/shopping/items/{id}/delete', [ShoppingController::class, 'deleteItem']);
+$router->post('/shopping/items/{id}/products', [ShoppingController::class, 'linkProduct']);
+$router->post('/shopping/items/{id}/products/{pid}/delete', [ShoppingController::class, 'unlinkProduct']);
+$router->get('/shopping/{id}', [ShoppingController::class, 'show']);
+$router->post('/shopping/{id}', [ShoppingController::class, 'update']);
+$router->post('/shopping/{id}/delete', [ShoppingController::class, 'delete']);
+$router->get('/shopping/{id}/print', [ShoppingController::class, 'print']);
+$router->post('/shopping/{id}/add', [ShoppingController::class, 'add']);
+$router->post('/shopping/{id}/match', [ShoppingController::class, 'match']);
+$router->post('/shopping/{id}/clear-done', [ShoppingController::class, 'clearDone']);
+$router->post('/shopping/{id}/entries/{eid}', [ShoppingController::class, 'updateEntry']);
+$router->post('/shopping/{id}/entries/{eid}/delete', [ShoppingController::class, 'deleteEntry']);
 
 // Auswertungen & Prognose
 $router->get('/reports', [ReportController::class, 'index']);
