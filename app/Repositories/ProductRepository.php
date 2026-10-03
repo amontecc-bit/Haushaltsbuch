@@ -36,6 +36,11 @@ final class ProductRepository extends Repository
         ]);
     }
 
+    public function setDefaultCategory(int $id, int $householdId, ?int $categoryId): void
+    {
+        $this->exec('UPDATE products SET default_category_id = ? WHERE id = ? AND household_id = ?', [$categoryId, $id, $householdId]);
+    }
+
     public function find(int $id, int $householdId): ?array
     {
         return $this->one('SELECT * FROM products WHERE id = ? AND household_id = ?', [$id, $householdId]);

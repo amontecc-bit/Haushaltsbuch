@@ -298,6 +298,15 @@ Einnahme bzw. Ausgabe (eigene Zeile „Umbuchungen“), damit die Bilanz dieses 
 **Einzelposten** (Knopf oben bzw. **Mehr → Einzelposten**) wertet die Einkäufe nach Artikeln aus: wie oft gekauft,
 Durchschnittspreis, günstigster und teuerster Preis. Ein Artikel anklicken zeigt seinen **Preisverlauf**.
 
+Unter dem Filter steht der **Kategorie-Pfad** mit der Summe aller gefundenen Posten. Ein Klick auf „Alle Kategorien“,
+die Hauptkategorie oder den Pfeil links führt eine Ebene höher. In einer Hauptkategorie erscheinen ihre
+Unterkategorien grau darunter (mit Summe) – ein Klick filtert darauf. Die Auswahl **Ohne Kategorie** im Filter zeigt
+Posten, denen noch keine Kategorie zugeordnet ist.
+
+**Kategorie korrigieren:** Steht ein Artikel in der falschen Kategorie, auf die Kategorie unter dem Artikelnamen
+(mit dem Stift) tippen, die richtige wählen und **Speichern**. Das ändert alle Käufe dieses Artikels und merkt sich die
+Kategorie für künftige Einkäufe.
+
 ![Einzelposten](anleitung/auswertung-posten.png)
 
 ---

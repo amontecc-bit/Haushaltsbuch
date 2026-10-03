@@ -9,6 +9,7 @@ use App\Core\Response;
 use App\Repositories\AccountRepository;
 use App\Repositories\CategoryRepository;
 use App\Repositories\ProductRepository;
+use App\Repositories\PurchaseRepository;
 use App\Repositories\TransactionRepository;
 use App\Repositories\UserRepository;
 use App\Services\ReportService;
@@ -53,10 +54,29 @@ final class ReportController extends Controller
     public function items(): void
     {
         [$period, $from, $to] = $this->period('3m');
-        $categoryId = $this->request->int('category_id');
         $q = mb_substr($this->request->str('q'), 0, 100);
         $sort = in_array($this->request->str('sort'), ['total', 'count', 'name', 'price'], true) ? $this->request->str('sort') : 'total';
         $svc = new ReportService($this->hid, Auth::accountIds('view'));
+        $categories = (new CategoryRepository())->all($this->hid, 'expense');
+
+        // Kategorie-Filter: leer = alle, 0 = ohne Kategorie, sonst eine (Unter-)Kategorie des Haushalts
+        $categoryId = $this->request->int('category_id');
+        $byId = array_column($categories, null, 'id');
+        if ($categoryId && !isset($byId[$categoryId])) {
+            $categoryId = null;
+        }
+        $current = $categoryId ? $byId[$categoryId] : null;
+        $parentCat = $current && $current['parent_id'] ? ($byId[(int) $current['parent_id']] ?? null) : null;
+        $children = [];
+        if ($current && !$current['parent_id']) {
+            $sums = $svc->itemsBySubcategory($from, $to, (int) $current['id'], $q);
+            foreach ($categories as $c) {
+                if ((int) $c['parent_id'] === (int) $current['id']) {
+                    $children[] = $c + ['total' => $sums[(int) $c['id']] ?? 0.0];
+                }
+            }
+        }
+
         $this->view('reports/items', [
             'title'      => 'Einzelposten',
             'back'       => '/reports',
@@ -64,13 +84,40 @@ final class ReportController extends Controller
             'from'       => $from,
             'to'         => $to,
             'categoryId' => $categoryId,
+            'current'    => $current,
+            'parentCat'  => $parentCat,
+            'children'   => $children,
             'q'          => $q,
             'sort'       => $sort,
             'rows'       => $svc->items($from, $to, $categoryId, $q, $sort),
+            'summary'    => $svc->itemsSummary($from, $to, $categoryId, $q),
             'byCategory' => $svc->itemsByCategory($from, $to),
-            'categories' => (new CategoryRepository())->all($this->hid, 'expense'),
+            'categories' => $categories,
             'scripts'    => ['vendor/chartjs/chart.umd.min.js'],
         ]);
+    }
+
+    /** Kategorie eines Artikels in allen sichtbaren Einkäufen korrigieren und als Standard lernen */
+    public function recategorize(): void
+    {
+        $productId = $this->request->int('product_id') ?: null;
+        $name = mb_substr($this->request->str('name'), 0, 190);
+        $categoryId = (new CategoryRepository())->validId($this->request->int('category_id'), $this->hid);
+        $products = new ProductRepository();
+        if ($productId && !$products->find($productId, $this->hid)) {
+            $this->back('/reports/items', 'Artikel nicht gefunden.');
+        }
+        if (!$productId && $name === '') {
+            $this->back('/reports/items', 'Artikel fehlt.');
+        }
+        $repo = new PurchaseRepository();
+        $n = $repo->transaction(function () use ($repo, $products, $productId, $name, $categoryId) {
+            if ($productId) {
+                $products->setDefaultCategory($productId, $this->hid, $categoryId);
+            }
+            return $repo->recategorizeItems($this->hid, Auth::accountIds('view'), $productId, $name, $categoryId);
+        });
+        $this->back('/reports/items', $n === 1 ? 'Kategorie für 1 Posten geändert.' : "Kategorie für $n Posten geändert.", 'success');
     }
 
     public function product(): void

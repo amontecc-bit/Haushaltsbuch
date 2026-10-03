@@ -46,7 +46,7 @@ SHOTS = [
     ("einkauf-foto-mobil", "/purchases/new?mode=photo", MOBILE, None, None),
     ("einkauf-hand", "/purchases/new?mode=manual", DESKTOP, None, 1100),
     ("auswertungen", "/reports?period=6m", DESKTOP, None, 1600),
-    ("auswertung-posten", "/reports/items?period=6m", DESKTOP, None, 1100),
+    ("auswertung-posten", "/reports/items?period=6m&category_id=1", DESKTOP, None, 1100),
     ("prognose", "/forecast", DESKTOP, None, 1500),
     ("szenario", "/forecast/scenarios/1/edit", DESKTOP, None, None),
     ("kredit", "/loans/1", DESKTOP, None, 1400),

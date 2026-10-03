@@ -81,6 +81,7 @@ $router->post('/purchases/candidates', [PurchaseController::class, 'candidates']
 // Auswertungen & Prognose
 $router->get('/reports', [ReportController::class, 'index']);
 $router->get('/reports/items', [ReportController::class, 'items']);
+$router->post('/reports/items/category', [ReportController::class, 'recategorize']);
 $router->get('/reports/product', [ReportController::class, 'product']);
 $router->get('/reports/export', [ReportController::class, 'export']);
 $router->get('/forecast', [ForecastController::class, 'index']);

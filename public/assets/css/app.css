@@ -132,3 +132,9 @@ body.guest { display: flex; align-items: center; justify-content: center; min-he
 .more-grid a { display: flex; flex-direction: column; align-items: center; gap: .4rem; padding: 1.1rem .5rem; border-radius: var(--radius);
     background: var(--bs-body-bg); border: 1px solid var(--bs-border-color-translucent); color: var(--bs-body-color); text-decoration: none; }
 .more-grid a i { font-size: 1.7rem; color: var(--bs-primary); }
+
+/* Einzelposten: Kategorie-Pfad mit ausgegrauten Unterkategorien zur Auswahl */
+.breadcrumb { --bs-breadcrumb-divider: '›'; row-gap: .25rem; }
+.sub-choice { display: inline-block; margin: 0 .35rem .15rem 0; padding: .1rem .55rem; border-radius: 1rem; font-size: .875rem;
+    color: var(--bs-secondary-color); background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color-translucent); text-decoration: none; }
+.sub-choice:hover { color: var(--bs-body-color); border-color: var(--bs-secondary-color); }

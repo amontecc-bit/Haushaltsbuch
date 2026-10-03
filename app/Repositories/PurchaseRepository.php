@@ -97,6 +97,20 @@ final class PurchaseRepository extends Repository
         return $v ? (int) $v : null;
     }
 
+    /**
+     * Kategorie aller sichtbaren Posten eines Artikels ändern – über das Produkt oder, bei Posten ohne Produkt,
+     * über den exakten Namen. Gibt die Anzahl geänderter Posten zurück.
+     */
+    public function recategorizeItems(int $householdId, array $accountIds, ?int $productId, string $name, ?int $categoryId): int
+    {
+        $match = $productId ? 'i.product_id = ?' : 'i.product_id IS NULL AND i.name = ?';
+        return $this->exec(
+            'UPDATE purchase_items i JOIN purchases p ON p.id = i.purchase_id SET i.category_id = ?
+             WHERE p.household_id = ? AND ' . $this->visibleSql($accountIds) . " AND $match",
+            [$categoryId, $householdId, ...$accountIds, $productId ?: $name]
+        );
+    }
+
     public function items(int $purchaseId): array
     {
         return $this->many(

@@ -212,24 +212,42 @@ final class ReportService
     }
 
     /**
+     * Wirksame Kategorie eines Postens (Alias i, Produkt pr): eigene Kategorie, sonst die gelernte des Produkts.
+     */
+    private const ITEM_CAT = 'COALESCE(i.category_id, pr.default_category_id)';
+
+    /**
+     * Gemeinsamer Filter der Einzelposten-Auswertung (Aliase i, p, pr).
+     * $categoryId: null = alle, 0 = ohne Kategorie, sonst die Kategorie samt Unterkategorien.
+     * @return array{0:string, 1:array}
+     */
+    private function itemScope(string $from, string $to, ?int $categoryId = null, string $q = ''): array
+    {
+        $sql = "p.household_id = ? AND (p.account_id IS NULL OR p.account_id IN ({$this->in()})) AND p.purchase_date BETWEEN ? AND ?";
+        $params = [$this->householdId, ...$this->accountIds, $from, $to];
+        if ($categoryId === 0) {
+            $sql .= ' AND ' . self::ITEM_CAT . ' IS NULL';
+        } elseif ($categoryId) {
+            $sql .= ' AND (' . self::ITEM_CAT . ' = ? OR ' . self::ITEM_CAT . ' IN (SELECT id FROM categories WHERE parent_id = ?))';
+            $params[] = $categoryId;
+            $params[] = $categoryId;
+        }
+        if ($q !== '') {
+            $sql .= ' AND (i.name LIKE ? OR pr.name LIKE ?)';
+            $like = '%' . str_replace(['%', '_'], ['\%', '\_'], $q) . '%';
+            $params[] = $like;
+            $params[] = $like;
+        }
+        return [$sql, $params];
+    }
+
+    /**
      * Einzelposten-Auswertung: gruppiert nach Produkt.
      * Einkäufe ohne Konto sind für alle sichtbar, sonst nur mit Leserecht auf das Konto.
      */
     public function items(string $from, string $to, ?int $categoryId = null, string $q = '', string $sort = 'total', int $limit = 200): array
     {
-        $params = [$this->householdId, ...$this->accountIds, $from, $to];
-        $where = '';
-        if ($categoryId) {
-            $where .= ' AND (i.category_id = ? OR i.category_id IN (SELECT id FROM categories WHERE parent_id = ?))';
-            $params[] = $categoryId;
-            $params[] = $categoryId;
-        }
-        if ($q !== '') {
-            $where .= ' AND (i.name LIKE ? OR pr.name LIKE ?)';
-            $like = '%' . str_replace(['%', '_'], ['\%', '\_'], $q) . '%';
-            $params[] = $like;
-            $params[] = $like;
-        }
+        [$where, $params] = $this->itemScope($from, $to, $categoryId, $q);
         $order = match ($sort) {
             'count' => 'cnt DESC',
             'name'  => 'name ASC',
@@ -237,38 +255,68 @@ final class ReportService
             default => 'total DESC',
         };
         return $this->rows(
-            "SELECT COALESCE(pr.id, 0) AS product_id, COALESCE(pr.name, i.name) AS name,
+            "SELECT COALESCE(pr.id, 0) AS product_id, COALESCE(pr.name, i.name) AS name, MIN(i.name) AS item_name,
                     COUNT(*) AS cnt, SUM(i.quantity) AS qty, SUM(i.total_price) AS total,
                     AVG(i.unit_price) AS avg_price, MIN(i.unit_price) AS min_price, MAX(i.unit_price) AS max_price,
                     MAX(p.purchase_date) AS last_date, GROUP_CONCAT(DISTINCT p.store SEPARATOR ', ') AS stores,
-                    c.name AS category_name, c.color AS category_color, c.icon AS category_icon
+                    MAX(c.id) AS category_id, MAX(c.name) AS category_name, MAX(c.color) AS category_color,
+                    COUNT(DISTINCT c.id) AS category_count
              FROM purchase_items i
              JOIN purchases p ON p.id = i.purchase_id
              LEFT JOIN products pr ON pr.id = i.product_id
-             LEFT JOIN categories c ON c.id = COALESCE(i.category_id, pr.default_category_id)
-             WHERE p.household_id = ? AND (p.account_id IS NULL OR p.account_id IN ({$this->in()}))
-               AND p.purchase_date BETWEEN ? AND ? $where
+             LEFT JOIN categories c ON c.id = " . self::ITEM_CAT . "
+             WHERE $where
              GROUP BY COALESCE(pr.id, CONCAT('n:', i.name))
              ORDER BY $order LIMIT " . (int) $limit,
             $params
         );
     }
 
-    /** Posten-Summen je Kategorie (nur Einkäufe) */
+    /** Summe und Anzahl der Posten zum Filter (unabhängig vom Zeilenlimit der Liste) */
+    public function itemsSummary(string $from, string $to, ?int $categoryId = null, string $q = ''): array
+    {
+        [$where, $params] = $this->itemScope($from, $to, $categoryId, $q);
+        $r = $this->rows(
+            "SELECT COALESCE(SUM(i.total_price), 0) AS total, COUNT(*) AS cnt
+             FROM purchase_items i JOIN purchases p ON p.id = i.purchase_id LEFT JOIN products pr ON pr.id = i.product_id
+             WHERE $where",
+            $params
+        )[0];
+        return ['total' => (float) $r['total'], 'count' => (int) $r['cnt']];
+    }
+
+    /** @return array<int, float> Unterkategorie-ID => Summe der Posten (nur Unterkategorien von $parentId) */
+    public function itemsBySubcategory(string $from, string $to, int $parentId, string $q = ''): array
+    {
+        [$where, $params] = $this->itemScope($from, $to, $parentId, $q);
+        $out = [];
+        foreach ($this->rows(
+            'SELECT ' . self::ITEM_CAT . " AS id, SUM(i.total_price) AS total
+             FROM purchase_items i JOIN purchases p ON p.id = i.purchase_id LEFT JOIN products pr ON pr.id = i.product_id
+             WHERE $where GROUP BY " . self::ITEM_CAT,
+            $params
+        ) as $r) {
+            $out[(int) $r['id']] = (float) $r['total'];
+        }
+        return $out;
+    }
+
+    /** Posten-Summen je Hauptkategorie (nur Einkäufe) */
     public function itemsByCategory(string $from, string $to): array
     {
+        [$where, $params] = $this->itemScope($from, $to);
         $rows = $this->rows(
             "SELECT COALESCE(c.parent_id, c.id) AS id, SUM(i.total_price) AS total, COUNT(*) AS cnt
              FROM purchase_items i JOIN purchases p ON p.id = i.purchase_id
-             LEFT JOIN categories c ON c.id = i.category_id
-             WHERE p.household_id = ? AND (p.account_id IS NULL OR p.account_id IN ({$this->in()}))
-               AND p.purchase_date BETWEEN ? AND ?
+             LEFT JOIN products pr ON pr.id = i.product_id
+             LEFT JOIN categories c ON c.id = " . self::ITEM_CAT . "
+             WHERE $where
              GROUP BY COALESCE(c.parent_id, c.id) ORDER BY total DESC",
-            [$this->householdId, ...$this->accountIds, $from, $to]
+            $params
         );
         $cats = $this->categoryMap();
         return array_map(fn ($r) => [
-            'id' => $r['id'] ? (int) $r['id'] : null,
+            'id' => $r['id'] ? (int) $r['id'] : 0,
             'name' => $r['id'] ? ($cats[(int) $r['id']]['name'] ?? '?') : 'Ohne Kategorie',
             'color' => $r['id'] ? ($cats[(int) $r['id']]['color'] ?? '#adb5bd') : '#adb5bd',
             'total' => (float) $r['total'], 'count' => (int) $r['cnt'],
