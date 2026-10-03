@@ -8,8 +8,9 @@
         <div class="stat-label">Summe <?= e(month_de((int) date('n'))) ?></div>
         <div class="stat-value"><?= money($month['total']) ?></div>
     </div></div></div>
-    <div class="col-md-6 d-flex align-items-center">
-        <a class="btn btn-outline-secondary w-100" href="<?= e(url('/reports/items')) ?>"><i class="bi bi-bar-chart"></i> Auswertung der Einzelposten</a>
+    <div class="col-md-6 d-flex align-items-center gap-2">
+        <a class="btn btn-outline-secondary w-100" href="<?= e(url('/shopping')) ?>"><i class="bi bi-card-checklist"></i> Einkaufsliste</a>
+        <a class="btn btn-outline-secondary w-100" href="<?= e(url('/reports/items')) ?>"><i class="bi bi-bar-chart"></i> Einzelposten</a>
     </div>
 </div>
 

@@ -12,7 +12,7 @@ Kassenbons fotografieren, Auswertungen ansehen und planen, wie sich die Kontost�
 3. [Eine Buchung erfassen](#3-eine-buchung-erfassen)
 4. [Buchungen suchen und bearbeiten](#4-buchungen-suchen-und-bearbeiten)
 5. [Kontoauszug importieren (CSV)](#5-kontoauszug-importieren-csv)
-6. [Einkäufe und Kassenbons](#6-einkäufe-und-kassenbons)
+6. [Einkäufe, Kassenbons und Einkaufsliste](#6-einkäufe-kassenbons-und-einkaufsliste)
 7. [Fixkosten und Daueraufträge](#7-fixkosten-und-daueraufträge)
 8. [Kategorien und Regeln](#8-kategorien-und-regeln)
 9. [Auswertungen](#9-auswertungen)
@@ -158,7 +158,7 @@ Zum Schluss **… Buchungen übernehmen**.
 
 ---
 
-## 6. Einkäufe und Kassenbons
+## 6. Einkäufe, Kassenbons und Einkaufsliste
 
 Unter **Einkäufe** hältst du fest, **was** du gekauft hast, nicht nur wie viel. So siehst du später z. B., wie viel
 auf Obst oder Süßes entfällt und wie sich der Preis der Milch entwickelt.
@@ -212,6 +212,73 @@ Ein REWE-Einkauf erscheint dann z. B. anteilig unter Lebensmittel und Drogerie.
 
 Die Kategorie jedes Artikels merkt sich das Haushaltsbuch. Beim nächsten Einkauf wird „Bananen“ automatisch als
 „Obst & Gemüse“ vorgeschlagen. Über **Preisverlauf** siehst du, was ein Artikel wann gekostet hat.
+
+### Einkaufsliste
+
+Unter **Einkaufsliste** (am Handy über **Mehr** oder auf der Seite **Einkäufe**) legst du Listen an, z. B.
+„Wocheneinkauf“. Ins Suchfeld tippst du, was du brauchst: Vorgeschlagen werden Posten, die schon einmal auf einer
+Liste standen, und Artikel aus deinen bisherigen Einkäufen mit Preisspanne. Gibt es etwas noch nicht, fügst du es
+als neuen Posten hinzu. Menge und Einheit (Stück, kg, g, l, Pck.) stellst du vor dem Hinzufügen ein. Steht ein
+Posten schon auf der Liste, wird die Menge erhöht.
+
+![Posten suchen](anleitung/einkaufsliste-suche.png)
+
+Zu jedem Posten zeigt die Liste den bisher **günstigsten und teuersten Preis** und den Laden mit dem besten Preis.
+Die Posten sind nach Kategorie gruppiert, so findest du im Laden alles in einem Gang. Ein Tipp auf die Menge oder
+den Stift öffnet die Bearbeitung. Dort änderst du Menge und Einheit, trägst eine Notiz ein (z. B. „Bio“) oder
+springst mit **Virtuellen Posten bearbeiten** zu Name, Kategorie und Produkten des Postens. Mit dem Kästchen hakst
+du einen Posten von Hand ab.
+
+![Einkaufsliste](anleitung/einkaufsliste.png)
+
+<img src="anleitung/einkaufsliste-mobil.png" alt="Einkaufsliste auf dem Handy" width="260">
+
+**Drucken / PDF** öffnet eine Druckansicht mit Kästchen zum Abhaken. Im Druckdialog kannst du **Als PDF speichern**
+wählen.
+
+![Druckansicht](anleitung/einkaufsliste-druck.png)
+
+**Nach dem Einkauf:** Sobald du den Kassenbon erfasst, hakt das Haushaltsbuch die gekauften Posten automatisch ab.
+Ein Hinweis zeigt, wie viele es waren. Das gilt für Posten, die spätestens am Einkaufstag auf die Liste kamen, alte
+Bons haken also nichts ab. Mit **Mit Einkauf abgleichen** kannst du eine Liste auch gezielt mit einem Einkauf der
+letzten 30 Tage vergleichen. Abgehakte Posten wandern nach unten unter **Erledigt**, mit Link zum Einkauf. Mit
+**Erledigte entfernen** räumst du die Liste auf.
+
+#### Virtuelle Posten: dasselbe Produkt aus verschiedenen Läden
+
+Ein Posten auf der Liste ist ein **virtueller Posten**, z. B. „Milch“. Ihm sind die echten Artikel von deinen Bons
+zugeordnet, etwa „Bio Vollmilch 1L“ von REWE und „Milsani Frische Milch 1L“ von ALDI. Die Preisspanne gilt für alle
+zugeordneten Artikel, und der Kauf eines davon hakt „Milch“ ab.
+
+Über den Knopf **Virtuelle Posten** auf der Einkaufsliste öffnest du einen Posten mit einem Tipp. Dort kannst du ihn
+umbenennen, die Kategorie ändern und Artikel aus deinen Einkäufen hinzufügen oder entfernen. Mit
+**Zurück zu „…“** kommst du wieder zu der Liste, die du zuletzt offen hattest.
+
+![Virtuelle Posten](anleitung/virtuelle-posten.png)
+
+Das meiste passiert von selbst:
+
+- Wählst du beim Hinzufügen einen Artikel aus deinen Einkäufen, entsteht ein virtueller Posten mit diesem Artikel.
+  Gehört der Artikel schon zu einem virtuellen Posten, wird dieser verwendet.
+- Ein neuer Posten wie „Butter“ wird beim ersten Einkauf von „Butter 250g“ abgehakt, weil der Name ohne
+  Mengenangabe übereinstimmt. Der Artikel wird ihm dabei zugeordnet.
+- Ähnliche Namen wie „Milchschokolade“ zählen **nicht** als „Milch“. Solche Artikel ordnest du bei Bedarf von Hand zu.
+
+#### Zuordnung auf einen Blick
+
+Die Seite **Zuordnung** (Knopf auf der Seite **Virtuelle Posten**) zeigt links alle virtuellen Posten mit ihren
+Artikeln und rechts alle Artikel aus deinen Einkäufen, die noch keinem Posten zugeordnet sind. Die meistgekauften
+stehen oben.
+
+![Zuordnung der Produkte](anleitung/zuordnung.png)
+
+- **Ziehen und ablegen:** Einen Artikel auf einen virtuellen Posten ziehen ordnet ihn zu. Zwischen zwei Posten wird
+  er verschoben, zurück nach **Nicht zugeordnet** wird die Zuordnung gelöst.
+- **Neuer Posten:** Ziehst du einen Artikel auf das Feld mit dem Plus, entsteht ein neuer virtueller Posten mit dem
+  Namen des Artikels. Den Namen kannst du danach ändern, z. B. „Hähnchenbrust 400g“ in „Hähnchen“.
+- **Mit gedrückter Strg-Taste** wird kopiert statt verschoben. Dann gehört der Artikel zu mehreren Posten.
+- **Am Handy:** Artikel antippen (er wird blau markiert), dann das Ziel antippen.
+- Das Suchfeld filtert beide Seiten.
 
 ---
 

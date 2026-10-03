@@ -138,3 +138,40 @@ body.guest { display: flex; align-items: center; justify-content: center; min-he
 .sub-choice { display: inline-block; margin: 0 .35rem .15rem 0; padding: .1rem .55rem; border-radius: 1rem; font-size: .875rem;
     color: var(--bs-secondary-color); background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color-translucent); text-decoration: none; }
 .sub-choice:hover { color: var(--bs-body-color); border-color: var(--bs-secondary-color); }
+
+/* Einkaufsliste */
+.min-w-0 { min-width: 0; }
+.shop-add { display: flex; flex-wrap: wrap; gap: .5rem; }
+.shop-search { flex: 1 1 100%; }
+.shop-qty { width: 4.5rem; flex: 0 0 auto; text-align: right; }
+.shop-unit { width: auto; flex: 0 0 auto; }
+.shop-add > .btn { flex: 1 1 auto; }
+@media (min-width: 576px) {
+    .shop-search { flex: 1 1 14rem; }
+    .shop-add > .btn { flex: 0 0 auto; }
+}
+.shop-suggest { position: absolute; top: 100%; left: 0; right: 0; z-index: 1040; max-height: 22rem; overflow-y: auto; margin-top: 2px; }
+.shop-entry { display: flex; align-items: center; gap: .6rem; }
+.shop-check { width: 1.4rem; height: 1.4rem; flex-shrink: 0; margin: 0; }
+.shop-qty-btn { min-width: 3.5rem; flex-shrink: 0; white-space: nowrap; }
+.shop-name { flex: 1; min-width: 0; }
+.shop-price { text-align: right; font-size: .85rem; white-space: nowrap; max-width: 40%; }
+.shop-edit { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .5rem; padding-left: 2rem; }
+.shop-edit input:not(.shop-qty) { flex: 1 1 10rem; width: auto; }
+.shop-done { color: var(--bs-secondary-color); }
+
+/* Zuordnung Produkte ↔ virtuelle Posten */
+.assign-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap: .75rem; align-items: start; }
+.assign-zone { transition: box-shadow .12s, border-color .12s; }
+.assign-zone.assign-target { cursor: pointer; border-style: dashed; }
+.assign-zone.assign-over { border-color: var(--bs-primary); box-shadow: 0 0 0 .2rem rgba(var(--bs-primary-rgb), .25); }
+.assign-new { border-style: dashed; background: transparent; }
+.assign-unassigned { position: sticky; top: 1rem; max-height: calc(100vh - 2rem); display: flex; flex-direction: column; }
+.assign-unassigned .card-body { overflow-y: auto; }
+@media (max-width: 991.98px) { .assign-unassigned { position: static; max-height: 22rem; } }
+.assign-chips { display: flex; flex-wrap: wrap; gap: .35rem; align-content: flex-start; min-height: 2.75rem; }
+.assign-chip { display: inline-block; padding: .2rem .6rem; border-radius: 1rem; font-size: .85rem; cursor: grab; user-select: none;
+    background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color); }
+.assign-chip:hover { border-color: var(--bs-secondary-color); }
+.assign-chip:active { cursor: grabbing; }
+.assign-chip.selected { background: var(--bs-primary); border-color: var(--bs-primary); color: #fff; }

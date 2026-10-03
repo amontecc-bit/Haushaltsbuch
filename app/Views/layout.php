@@ -8,6 +8,7 @@ $nav = [
     ['/', 'speedometer2', 'Übersicht'],
     ['/transactions', 'list-ul', 'Buchungen'],
     ['/purchases', 'basket', 'Einkäufe'],
+    ['/shopping', 'card-checklist', 'Einkaufsliste'],
     ['/recurring', 'arrow-repeat', 'Fixkosten'],
     ['/import', 'upload', 'CSV-Import'],
     ['/reports', 'pie-chart', 'Auswertungen'],

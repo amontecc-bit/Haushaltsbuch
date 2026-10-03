@@ -179,6 +179,43 @@ foreach ([-40, -26, -12, -4] as $k => $offset) {
     $purchase(date('Y-m-d', strtotime("$offset days")), 'REWE', $haushalt, $items, true);
 }
 
+// Zweiter Laden mit ähnlichen Produkten (für virtuelle Posten der Einkaufsliste)
+$purchase(date('Y-m-d', strtotime('-18 days')), 'ALDI', $haushalt, [
+    ['Milsani Frische Milch 1L', 109, 'Milchprodukte & Eier'], ['Bananen', 169, 'Obst & Gemüse'], ['Roggenbrot', 189, 'Brot & Backwaren'],
+    ['Gouda jung Scheiben', 179, 'Milchprodukte & Eier'], ['Penne Rigate', 89, 'Vorrat & Konserven'],
+], false);
+$purchase(date('Y-m-d', strtotime('-2 days')), 'ALDI', $haushalt, [
+    ['Milsani Frische Milch 1L', 115, 'Milchprodukte & Eier'], ['Penne Rigate', 95, 'Vorrat & Konserven'],
+], false);
+
+// Einkaufsliste aus virtuellen Posten
+$product = static fn (string $name): int => (int) $db->query('SELECT id FROM products WHERE household_id = ' . $hid
+    . ' AND normalized = ' . $db->quote(CategorizationService::normalizeProduct($name)))->fetchColumn();
+$listId = $insert('shopping_lists', ['household_id' => $hid, 'name' => 'Wocheneinkauf', 'created_by' => $anna,
+    'created_at' => date('Y-m-d H:i:s', strtotime('-3 days'))]);
+$lastAldi = (int) $db->query("SELECT MAX(id) FROM purchases WHERE household_id = $hid AND store = 'ALDI'")->fetchColumn();
+foreach ([
+    ['Milch', 'Milchprodukte & Eier', ['Bio Vollmilch 1L', 'Milsani Frische Milch 1L'], 3, null, null],
+    ['Käse', 'Milchprodukte & Eier', ['Gouda Scheiben', 'Gouda jung Scheiben'], 1, null, 'gerne jung'],
+    ['Butter', 'Milchprodukte & Eier', [], 1, 'Pck', null],
+    ['Bananen', 'Obst & Gemüse', ['Bananen'], 1, 'kg', null],
+    ['Tomaten', 'Obst & Gemüse', ['Tomaten'], 500, 'g', null],
+    ['Brot', 'Brot & Backwaren', ['Vollkornbrot', 'Roggenbrot'], 1, null, null],
+    ['Nudeln', 'Vorrat & Konserven', ['Spaghetti', 'Penne Rigate'], 2, 'Pck', 'done'],
+    ['Mineralwasser', 'Getränke', ['Mineralwasser 6x1,5L'], 2, null, null],
+    ['Spülmittel', 'Reinigung', ['Spülmittel'], 1, null, null],
+] as [$name, $category, $products, $qty, $unit, $note]) {
+    $itemId = $insert('shopping_items', ['household_id' => $hid, 'name' => $name, 'normalized' => CategorizationService::normalizeProduct($name),
+        'category_id' => $cat($category)]);
+    foreach ($products as $p) {
+        $insert('shopping_item_products', ['shopping_item_id' => $itemId, 'product_id' => $product($p)]);
+    }
+    $done = $note === 'done';
+    $insert('shopping_list_entries', ['list_id' => $listId, 'shopping_item_id' => $itemId, 'quantity' => $qty, 'unit' => $unit,
+        'note' => $done ? null : $note, 'created_at' => date('Y-m-d H:i:s', strtotime('-3 days')),
+        'done_at' => $done ? date('Y-m-d H:i:s', strtotime('-2 days')) : null, 'purchase_id' => $done ? $lastAldi : null]);
+}
+
 // Szenario und Einstellungen
 $sid = $insert('forecast_scenarios', ['household_id' => $hid, 'name' => 'Sparsamer Monat', 'note' => 'Weniger Essen gehen, kein Urlaub']);
 $insert('forecast_scenario_values', ['scenario_id' => $sid, 'account_id' => $giro, 'monthly_amount' => '-350.00']);
