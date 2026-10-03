@@ -58,7 +58,7 @@ Header `X-CSRF-Token`); `HB.post()` in `public/assets/js/app.js` setzt den Heade
 | `CsvImportService` | Kodierung, Trennzeichen, Kopfzeilen-Suche, Profil-Erkennung, Datensätze, stabile Hashes (Duplikate, Hash enthält die Konto-ID), `sameAccount()` (IBAN/alte Kontonummer → eigenes Konto = Umbuchung), `isOwnHash()` |
 | `CategorizationService` + `CategoryKeywords` | Vorschläge: eigene Regeln → Historie/bekanntes Produkt → ähnliches Produkt → Stichwörter |
 | `ReceiptTextParser` | Bontext/PDF-Text → Geschäft, Datum, Summe, Posten; toleriert OCR-Fehler, heilt Einzelziffern über die Summe; mehrere Fotos (``-getrennt) werden einzeln gelesen und überlappend zusammengeführt; mit `$ocr = true` Platzhalter (`missing`) für unlesbare Zeilen und `suspect` für geratene/unplausible Preise; kennt EDEKA/Marktkauf-PDF-Bons und REWE-Onlinerechnungen |
-| `AiReceiptRecognizer` | Claude API (offizielles PHP-SDK, Beta-Messages mit `fallbacks: 'default'`), JSON-Schema-Ausgabe |
+| `AiReceiptRecognizer` | Claude API (offizielles PHP-SDK, Beta-Messages mit `fallbacks: 'default'`), JSON-Schema-Ausgabe; `effort` nur bei Modellen, die ihn kennen (`supportsEffort()`, sonst automatische Wiederholung ohne) |
 | `ReportService` | Summen/Kategorien/Monatsverläufe; mit Einkauf verknüpfte Buchungen optional nach Posten aufgeteilt; Umbuchungen nur bei Kontofilter |
 | `ForecastService` | Prognose: Saldo heute + Fixkosten-Termine + variabler Monatssaldo je Konto – Ø (ohne `recurring_id`/Umbuchungen/erkannte Import-Paare/ausgeklammerte Kategorien) oder Handwert aus einem Szenario |
 | `LoanCalculator` | Tilgungsplan (30/360, erste Periode taggenau), Sondertilgungen, Zins-/Ratenänderungen, `balanceAt()` |
@@ -113,7 +113,7 @@ Header `X-CSRF-Token`); `HB.post()` in `public/assets/js/app.js` setzt den Heade
 
 ## Status / mögliche nächste Schritte
 
-Alle geplanten Module sind umgesetzt und getestet (62 PHPUnit-Tests; Browser-Durchlauf Foto → lokale OCR → Speichern).
+Alle geplanten Module sind umgesetzt und getestet (79 PHPUnit-Tests; Browser-Durchlauf Foto → lokale OCR → Speichern).
 Noch nicht real getestet: Kamera auf echtem Smartphone (braucht HTTPS), KI-Erkennung mit echtem API-Schlüssel.
 Ideen: Budgets je Kategorie mit Warnung, Sparziele, Bearbeiten von CSV-Profilen in der Oberfläche,
 Konten-Export/Backup, E-Mail-Einladung für Familienmitglieder, Zwei-Faktor-Login.

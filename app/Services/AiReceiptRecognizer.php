@@ -6,6 +6,7 @@ namespace App\Services;
 
 use Anthropic\Client;
 use Anthropic\Core\Exceptions\APIStatusException;
+use Anthropic\Core\Exceptions\BadRequestException;
 
 /**
  * Erkennung von Kassenbons (Fotos) und PDF-Rechnungen/Einkaufslisten über die Claude API.
@@ -45,16 +46,32 @@ final class AiReceiptRecognizer
 
         $client = new Client(apiKey: $this->apiKey);
         $useFallback = str_starts_with($this->model, 'claude-opus-5') || str_starts_with($this->model, 'claude-fable');
-        try {
-            $message = $client->beta->messages->create(
+        $send = function (bool $withEffort) use ($client, $content, $useFallback) {
+            $outputConfig = ['format' => ['type' => 'json_schema', 'schema' => self::schema()]];
+            if ($withEffort) {
+                $outputConfig['effort'] = 'medium';
+            }
+            return $client->beta->messages->create(
                 model: $this->model,
                 maxTokens: 16000,
                 messages: [['role' => 'user', 'content' => $content]],
-                outputConfig: ['effort' => 'medium', 'format' => ['type' => 'json_schema', 'schema' => self::schema()]],
+                outputConfig: $outputConfig,
                 fallbacks: $useFallback ? 'default' : null,
                 betas: $useFallback ? ['server-side-fallback-2026-07-01'] : null,
                 requestOptions: ['timeout' => 120.0],
             );
+        };
+        try {
+            $withEffort = self::supportsEffort($this->model);
+            try {
+                $message = $send($withEffort);
+            } catch (BadRequestException $e) {
+                // Unbekanntes Modell ohne Effort-Unterstützung: einmal ohne den Parameter wiederholen
+                if (!$withEffort || stripos($e->getMessage(), 'effort') === false) {
+                    throw $e;
+                }
+                $message = $send(false);
+            }
         } catch (APIStatusException $e) {
             $type = $e->type?->value ?? '';
             throw new \RuntimeException(match (true) {
@@ -78,6 +95,15 @@ final class AiReceiptRecognizer
             throw new \RuntimeException('Die Antwort der KI konnte nicht gelesen werden.');
         }
         return self::normalize($data, array_column($categories, 'id'));
+    }
+
+    /**
+     * Ob das Modell output_config.effort annimmt. Haiku, die Claude-3-Reihe sowie Sonnet 4/4.5 und Opus 4/4.1
+     * lehnen den Parameter mit einem Fehler ab; neuere bzw. unbekannte Modelle bekommen ihn.
+     */
+    public static function supportsEffort(string $model): bool
+    {
+        return !preg_match('/haiku|^claude-3|^claude-(sonnet-4(-[05])?|opus-4(-[01])?)(-\d{8})?$/', $model);
     }
 
     private function prompt(string $categories): string
