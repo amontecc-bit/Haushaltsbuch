@@ -19,8 +19,9 @@ Kassenbons fotografieren, Auswertungen ansehen und planen, wie sich die Kontost�
 10. [Auswertungen](#10-auswertungen)
 11. [Prognose](#11-prognose)
 12. [Kredite](#12-kredite)
-13. [Für Administratoren: Konten, Familie, Einstellungen](#13-für-administratoren-konten-familie-einstellungen)
-14. [Häufige Fragen](#14-häufige-fragen)
+13. [Claude auf dem Smartphone](#13-claude-auf-dem-smartphone)
+14. [Für Administratoren: Konten, Familie, Einstellungen](#14-für-administratoren-konten-familie-einstellungen)
+15. [Häufige Fragen](#15-häufige-fragen)
 
 ---
 
@@ -529,7 +530,53 @@ erster Rate.
 
 ---
 
-## 13. Für Administratoren: Konten, Familie, Einstellungen
+## 13. Claude auf dem Smartphone
+
+Mit der **Claude-App** kannst du Einkaufsliste, Vorrat und Rezepte per Chat oder Sprache bedienen, ohne das
+Haushaltsbuch zu öffnen. Zum Beispiel:
+
+- „Setz Milch, Butter und zwei Gurken auf die Einkaufsliste.“
+- „Was steht noch auf der Liste?“ – im Laden: „Milch und Butter habe ich.“
+- „Das Mehl ist leer.“ oder „Wir haben noch 3 Eier.“
+- „Was kann ich heute Abend mit dem kochen, was da ist?“
+- „Leg dieses Rezept an: …“ (Text oder Link einfügen) und danach „Setz die fehlenden Zutaten auf die Liste.“
+- „Wir haben die Lasagne für 4 gekocht.“ – die Zutaten werden vom Vorrat abgezogen.
+- „12,50 bar beim Bäcker.“ – bucht eine Bargeld-Ausgabe.
+- „Räum meine virtuellen Posten auf: Gibt es doppelte, und welche Produkte sind noch keinem Posten zugeordnet?“ –
+  Claude macht Vorschläge (zusammenführen, zuordnen, Referenzmenge und Verbrauchsdauer setzen) und ändert erst nach
+  deiner Bestätigung.
+
+**Was Claude darf – und was nicht:** Erlaubt sind nur Einkaufslisten, Vorrat, Rezepte, die Pflege der
+virtuellen Posten samt Zuordnung der echten Produkte (diese nur mit Namen, wie oft und wann zuletzt gekauft) und das
+Buchen von Bargeld-Ausgaben (auf Bargeld-Konten, für die du Buchungsrechte hast, höchstens 5.000 €). **Kontostände, Umsätze,
+Auswertungen, Preise, Geschäfte und Kredite** sind über Claude nicht abrufbar. Fragst du danach, verweist Claude auf das
+Haushaltsbuch selbst. Gebuchte Bargeld-Ausgaben änderst oder löschst du wie gewohnt unter **Buchungen**; sie tragen
+die Notiz „per Claude erfasst“.
+
+### Einrichten
+
+1. Ein Administrator schaltet den Zugang unter **Einstellungen › Claude (MCP)** für den Haushalt ein. Dort steht
+   auch die Adresse, die du gleich brauchst (endet auf `/mcp`).
+2. Auf **claude.ai** im Browser unter *Einstellungen › Konnektoren* einen **benutzerdefinierten Konnektor** hinzufügen:
+   Name „Haushaltsbuch“, Adresse von Schritt 1.
+3. **Verbinden** wählen. Es öffnet sich das Haushaltsbuch: anmelden und **Erlauben** tippen.
+4. Fertig – in der Claude-App auf dem Smartphone steht der Konnektor automatisch zur Verfügung. Jedes
+   Familienmitglied verbindet sein eigenes Claude-Konto und handelt dabei mit seinen eigenen Rechten.
+
+<img src="anleitung/claude-freigabe-mobil.png" alt="Zugriff für Claude erlauben" width="260">
+
+Unter **Einstellungen › Claude (MCP)** siehst du deine verbundenen Apps (Administratoren sehen alle im Haushalt) und
+kannst eine Verbindung mit **Trennen** sofort sperren. Das **Protokoll** zeigt alles, was über Claude geändert wurde.
+Schaltet ein Administrator den Zugang aus, sind alle Verbindungen sofort gesperrt.
+
+![Claude-Einstellungen](anleitung/claude-einstellungen.png)
+
+> **Hinweis:** Das klappt nur, wenn das Haushaltsbuch über **HTTPS** im Internet erreichbar ist – nicht bei einer
+> rein lokalen Installation.
+
+---
+
+## 14. Für Administratoren: Konten, Familie, Einstellungen
 
 ### Ersteinrichtung
 
@@ -568,12 +615,13 @@ Unter **Familie** legst du weitere Personen an (Name, E-Mail als Anmeldename, Pa
   API-Schlüssel von console.anthropic.com und kostet wenige Cent pro Bon. Beim Einlesen kann trotzdem jederzeit
   gewechselt werden.
 - **Prognose**: Standard-Zeitraum und aus wie vielen Monaten der Durchschnitt gebildet wird.
+- **Claude (MCP)**: Zugang für die Claude-App ein- und ausschalten, siehe [Kapitel 13](#13-claude-auf-dem-smartphone).
 
 ![Einstellungen](anleitung/einstellungen.png)
 
 ---
 
-## 14. Häufige Fragen
+## 15. Häufige Fragen
 
 **Muss ich Fixkosten jeden Monat selbst buchen?**
 Nein. Fällige Fixkosten mit „Automatisch buchen“ werden beim ersten Öffnen des Haushaltsbuchs am Tag selbst gebucht.

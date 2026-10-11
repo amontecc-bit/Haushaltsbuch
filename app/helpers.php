@@ -28,6 +28,22 @@ function url(string $path = '/', array $query = []): string
     return $query ? $u . '?' . http_build_query($query) : $u;
 }
 
+/**
+ * Absolute URL (für OAuth/MCP). APP_URL (z. B. https://haushalt.example.de) hat Vorrang, sonst Schema und Host
+ * der aktuellen Anfrage.
+ */
+function absolute_url(string $path = '/'): string
+{
+    $origin = rtrim((string) Config::get('app.url', ''), '/');
+    if ($origin === '') {
+        $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+        $origin = ($https ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
+    } else {
+        $origin = (string) preg_replace('#^(https?://[^/]+).*$#', '$1', $origin);
+    }
+    return $origin . url($path);
+}
+
 function asset(string $path): string
 {
     $file = __DIR__ . '/../public/assets/' . ltrim($path, '/');

@@ -74,6 +74,10 @@ SHOTS = [
     ("benutzer-rechte", "/users/2/edit", DESKTOP, None, 1100),
     ("einstellungen", "/settings", DESKTOP, None, 1200),
     ("mehr-mobil", "/more", MOBILE, None, None),
+    ("claude-einstellungen", "/settings/claude", DESKTOP, None, 1100),
+    ("claude-freigabe-mobil", "/oauth/authorize?response_type=code&client_id=hb_demo"
+     "&redirect_uri=https%3A%2F%2Fclaude.ai%2Fapi%2Fmcp%2Fauth_callback&code_challenge_method=S256"
+     "&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&state=demo", MOBILE, None, 1000),
 ]
 
 

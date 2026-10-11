@@ -13,6 +13,7 @@
     <a href="<?= e(url('/categories')) ?>"><i class="bi bi-tags"></i>Kategorien</a>
     <a href="<?= e(url('/rules')) ?>"><i class="bi bi-magic"></i>Regeln</a>
     <?php if ($isAdmin): ?><a href="<?= e(url('/users')) ?>"><i class="bi bi-people"></i>Familie</a><?php endif; ?>
+    <a href="<?= e(url('/settings/claude')) ?>"><i class="bi bi-stars"></i>Claude</a>
     <a href="<?= e(url('/settings')) ?>"><i class="bi bi-gear"></i>Einstellungen</a>
 </div>
 <form method="post" action="<?= e(url('/logout')) ?>" class="text-center">

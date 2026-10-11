@@ -9,7 +9,10 @@ final class Router
     /** @var array<int, array{method:string, pattern:string, handler:array, auth:string}> */
     private array $routes = [];
 
-    /** auth: 'guest' (öffentlich), 'user' (angemeldet), 'admin' */
+    /**
+     * auth: 'guest' (öffentlich), 'user' (angemeldet), 'admin', 'api' (Maschinen-Endpunkte wie MCP/OAuth:
+     * ohne Sitzung und ohne CSRF-Prüfung – die Action prüft selbst, z. B. per Bearer-Token)
+     */
     public function get(string $path, array $handler, string $auth = 'user'): void
     {
         $this->add('GET', $path, $handler, $auth);
@@ -38,6 +41,14 @@ final class Router
                 continue;
             }
 
+            $params = array_map('intval', array_filter($m, 'is_string', ARRAY_FILTER_USE_KEY));
+            [$class, $action] = $route['handler'];
+            if ($route['auth'] === 'api') {
+                (new $class($request))->$action(...array_values($params));
+                return;
+            }
+
+            Session::start();
             if ($request->method === 'POST' && !Csrf::check($request)) {
                 // 403 statt 419: Apache kennt 419 nicht und macht daraus einen 500er
                 http_response_code(403);
@@ -56,12 +67,11 @@ final class Router
                 }
             }
 
-            $params = array_map('intval', array_filter($m, 'is_string', ARRAY_FILTER_USE_KEY));
-            [$class, $action] = $route['handler'];
             (new $class($request))->$action(...array_values($params));
             return;
         }
 
+        Session::start();
         http_response_code($pathMatched ? 405 : 404);
         View::render('errors/message', ['title' => 'Nicht gefunden', 'message' => 'Die Seite gibt es nicht.', 'request' => $request],
             Auth::user() ? 'layout' : 'layout_guest');

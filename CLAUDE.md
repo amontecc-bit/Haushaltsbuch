@@ -8,7 +8,8 @@ technische Details zu Abläufen und Tests in `docs/DEVELOPMENT.md`, die Bedienun
 
 Haushaltsbuch-Web-App für eine Familie: Konten, Buchungen, Fixkosten, CSV-Import, Einkäufe mit Einzelposten
 (Hand/PDF/Kassenbon-Foto, lokale OCR oder Claude API), Einkaufslisten aus virtuellen Posten, Vorrat mit automatischer
-Einkaufsliste, Rezepte mit Vorschlägen nach Vorrat, Kategorisierung mit Lernen, Auswertungen, Prognose, Kredite.
+Einkaufsliste, Rezepte mit Vorschlägen nach Vorrat, Kategorisierung mit Lernen, Auswertungen, Prognose, Kredite,
+MCP-Server mit OAuth für die Claude-App (nur Einkaufsliste, Vorrat, Rezepte, Posten-Pflege, Bargeld-Buchung – keine Finanzdaten).
 **UI-Sprache und Code-Kommentare: Deutsch.** Bezeichner (Klassen, Methoden, Spalten) Englisch.
 
 - PHP 8.3 (Minimum 8.1), eigenes schlankes MVC, **kein Framework**. Composer nur für: `smalot/pdfparser`,
@@ -47,7 +48,8 @@ database/migrations/    NNN_name.sql, werden in Reihenfolge einmalig ausgeführt
 storage/                uploads/ (Belege: purchases/{id}/n.ext, tmp/{token}/, import/), logs/ – nicht öffentlich
 ```
 
-**Routing:** `app/routes.php`, Muster `/pfad/{id}` (nur Ziffern), drittes Argument `'guest' | 'user' | 'admin'`.
+**Routing:** `app/routes.php`, Muster `/pfad/{id}` (nur Ziffern), drittes Argument `'guest' | 'user' | 'admin' | 'api'`
+(`'api'` = ohne Sitzung und ohne CSRF, nur für MCP/OAuth – die Action authentifiziert selbst).
 Parameter werden positionsweise an die Action übergeben. Jeder POST wird per CSRF geprüft (`_csrf`-Feld oder
 Header `X-CSRF-Token`); `HB.post()` in `public/assets/js/app.js` setzt den Header automatisch und sendet JSON oder FormData.
 
@@ -65,7 +67,9 @@ Header `X-CSRF-Token`); `HB.post()` in `public/assets/js/app.js` setzt den Heade
 | `LoanCalculator` | Tilgungsplan (30/360, erste Periode taggenau), Sondertilgungen, Zins-/Ratenänderungen, `balanceAt()` |
 | `ShoppingListService` | Einkaufsliste: `match()` gleicht offene Einträge mit den Posten eines Einkaufs ab (zugeordnete Produkte des virtuellen Postens, sonst exakt gleicher normalisierter Name → Produkt wird gelernt); `matchPurchase()` läuft nach jedem Speichern eines Einkaufs (nur Einträge, die bis zum Einkaufstag angelegt wurden) |
 | `InventoryService` | Vorrat je virtuellem Posten in Referenzeinheiten: Einheiten (`toRef`), Faktor aus dem Produktnamen (`guessFactor`), Chargen je Einkauf (`syncPurchase`, stabil über purchase_id+product_id), FIFO-Verbrauch, Korrektur, `refreshAutoList()` (Liste „Automatisch“) |
-| `RecipeService` | Rezept gegen Vorrat (`evaluate`, Portionen skaliert, Grundvorrat), Sortierung der Vorschläge (`rank`) |
+| `RecipeService` | Rezept gegen Vorrat (`evaluate`, Portionen skaliert, Grundvorrat), Sortierung der Vorschläge (`rank`); DB-Teil gemeinsam für Web und MCP: `ingredientRows` (Zutaten prüfen/anlegen), `cook`, `addMissingToList`, `evaluateAll`, `card` |
+| `Mcp\McpServer` / `Mcp\McpTools` + `Mcp\ItemTools` | MCP-Protokoll (JSON-RPC, zustandslos, reine Klasse) bzw. die 23 Tools für Claude (Basis `Mcp\ToolSet`; `ItemTools` = virtuelle Posten, Produkt-Zuordnung, `merge_items`). **Keine Finanzdaten** ausgeben (keine Preise, Geschäfte, Einkäufe, Salden, Umsätze); einzige Ausnahme `book_cash_expense` (nur `cash`-Konten mit Buchungsrecht, ≤ 5.000 €, Antwort ohne Saldo). Fachfehler als `ToolError`, Änderungen nach `mcp_log` |
+| `OAuthService` | OAuth 2.1 für den MCP-Server: PKCE S256, erlaubte Rückruf-Hosts (claude.ai/claude.com/localhost), Bearer/Basic aus dem Header, Tokens nur gehasht; Abläufe im `OAuthController` |
 | `Migrator` | führt `database/migrations/*.sql` aus (auch automatisch beim ersten Seitenaufruf/Setup) |
 
 ## Konventionen (bitte einhalten)
@@ -104,6 +108,10 @@ Header `X-CSRF-Token`); `HB.post()` in `public/assets/js/app.js` setzt den Heade
 - **`public/.htaccess` ohne `RewriteBase`:** Das relative Ziel `index.php` führte bei IONOS zu einem Apache-500er bei
   allen Routen außer `/` (Setup/Login nicht erreichbar). Die Basis wird jetzt per `%{ENV:BASE}` selbst ermittelt
   (funktioniert im Domain-Root, im Unterordner und unter XAMPP) – nicht auf `RewriteRule ^ index.php` zurückbauen.
+- **`Authorization`-Header** kommt bei CGI/FastCGI (IONOS) nicht bei PHP an – beide `.htaccess` (Hauptordner und
+  `public/`) reichen ihn per `SetEnvIf` **und** `RewriteRule [E=…]` als `HTTP_AUTHORIZATION` weiter (`OAuthService::bearer()`
+  liest auch `REDIRECT_…`). Nur die RewriteRule in `public/` reichte bei IONOS nicht: Claude war „verbunden“, bekam aber
+  401 auf `/mcp` („Autorisierung fehlgeschlagen“, keine Tools). Der Grund jeder 401 steht im Fehlerlog (`MCP 401: …`).
 - **Server-Zugangsdaten** (`.env`, `.env.ionos` o. ä.) nie committen – `.gitignore` schließt `/.env.*` außer `.env.example` aus.
 - **Bash-Heredocs mit viel PHP-Quoting** sind fehleranfällig – PHP-Dateien lieber mit dem Write-Tool schreiben.
 - **Lokale DB `haushaltsbuch` enthält echte Daten der Familie** – nie zurücksetzen oder mit Testdaten füllen.
@@ -117,7 +125,9 @@ Header `X-CSRF-Token`); `HB.post()` in `public/assets/js/app.js` setzt den Heade
 
 ## Status / mögliche nächste Schritte
 
-Alle geplanten Module sind umgesetzt und getestet (101 PHPUnit-Tests; Browser-Durchlauf Foto → lokale OCR → Speichern).
-Noch nicht real getestet: Kamera auf echtem Smartphone (braucht HTTPS), KI-Erkennung mit echtem API-Schlüssel.
+Alle geplanten Module sind umgesetzt und getestet (117 PHPUnit-Tests; Browser-Durchlauf Foto → lokale OCR → Speichern;
+MCP/OAuth Ende-zu-Ende gegen eine DB-Kopie).
+Noch nicht real getestet: Kamera auf echtem Smartphone (braucht HTTPS), KI-Erkennung mit echtem API-Schlüssel,
+MCP-Konnektor mit echter Claude-App (braucht HTTPS-Server).
 Ideen: Budgets je Kategorie mit Warnung, Sparziele, Bearbeiten von CSV-Profilen in der Oberfläche,
 Konten-Export/Backup, E-Mail-Einladung für Familienmitglieder, Zwei-Faktor-Login.

@@ -73,7 +73,7 @@ final class RecipeController extends Controller
             'servings' => $servings,
             'cfg'      => [
                 'page' => self::PAGE,
-                'recipes' => array_map(fn ($x) => $this->card($x['recipe'], $x['eval'], $servings), $list),
+                'recipes' => array_map(fn ($x) => RecipeService::card($x['recipe'], $x['eval'], $servings), $list),
                 'lists' => $this->listOptions(),
             ],
             'scripts'  => ['js/recipes.js'],
@@ -101,7 +101,7 @@ final class RecipeController extends Controller
             'recipe'   => $r,
             'classes'  => $names,
             'servings' => $servings,
-            'card'     => $this->card($r, $eval, $servings),
+            'card'     => RecipeService::card($r, $eval, $servings),
             'lists'    => $this->listOptions(),
         ]);
     }
@@ -158,18 +158,7 @@ final class RecipeController extends Controller
         $repo = $this->repo();
         $r = $repo->find($id, $this->hid) ?? $this->notFound();
         $servings = $this->servings($this->request->int('servings')) ?? (int) $r['servings'];
-        $scale = RecipeService::scale($servings, (int) $r['servings']);
-        $short = [];
-        foreach ($repo->ingredients([$id])[$id] ?? [] as $ing) {
-            if ($ing['staple']) {
-                continue;
-            }
-            $rest = InventoryService::consume($this->hid, (int) $ing['shopping_item_id'], RecipeService::needRef($ing, $scale));
-            if ($rest > 0) {
-                $short[] = $ing['name'];
-            }
-        }
-        InventoryService::refreshAutoList($this->hid);
+        $short = RecipeService::cook($this->hid, $r, $servings);
         $msg = "„{$r['name']}“ für $servings " . ($servings === 1 ? 'Portion' : 'Portionen') . ' vom Vorrat abgebucht.';
         if ($short) {
             $msg .= ' Laut Vorrat war nicht genug da von: ' . implode(', ', $short) . '.';
@@ -187,16 +176,7 @@ final class RecipeController extends Controller
         $list = $this->request->str('list_id') === 'auto' || !$this->request->int('list_id')
             ? $shop->autoList($this->hid)
             : ($shop->findList((int) $this->request->int('list_id'), $this->hid) ?? $this->notFound());
-        $eval = $this->evaluateAll([$r], $servings)[$id];
-        $n = 0;
-        foreach ($eval['ingredients'] as $ing) {
-            if ($ing['missing'] <= 0) {
-                continue;
-            }
-            [$qty, $unit] = InventoryService::shoppingQuantity($ing['missing'], (float) $ing['ref_quantity'], $ing['ref_unit']);
-            $shop->addEntry((int) $list['id'], (int) $ing['shopping_item_id'], $qty, $unit, mb_substr('für ' . $r['name'], 0, 190));
-            $n++;
-        }
+        $n = count(RecipeService::addMissingToList($this->hid, $r, $servings, (int) $list['id']));
         if (!$n) {
             $this->redirect("/recipes/$id?servings=$servings", 'Es fehlt nichts – alle Zutaten sind laut Vorrat da.', 'info');
         }
@@ -255,47 +235,8 @@ final class RecipeController extends Controller
     /** @return array<int, array> Rezept-ID => Ergebnis von RecipeService::evaluate() (null Portionen = wie im Rezept) */
     private function evaluateAll(array $recipes, ?int $servings): array
     {
-        $ids = array_map(fn ($r) => (int) $r['id'], $recipes);
-        $ingredients = $this->repo()->ingredients($ids);
-        $stock = (new InventoryRepository())->stockMap($this->hid, date('Y-m-d'));
-        $out = [];
-        foreach ($recipes as $r) {
-            $scale = $servings ? RecipeService::scale($servings, (int) $r['servings']) : 1.0;
-            $out[(int) $r['id']] = RecipeService::evaluate($ingredients[(int) $r['id']] ?? [], $stock, $scale);
-        }
-        return $out;
-    }
-
-    /** Darstellung eines Rezepts mit Vorratsabgleich (für Vorschläge und Detailansicht) */
-    private function card(array $r, array $eval, ?int $servings): array
-    {
-        $servings ??= (int) $r['servings'];
-        $scale = RecipeService::scale($servings, (int) $r['servings']);
-        return [
-            'id'            => (int) $r['id'],
-            'name'          => $r['name'],
-            'servings'      => $servings,
-            'complete'      => $eval['complete'],
-            'missing_count' => $eval['missing_count'],
-            'total'         => $eval['total'],
-            'coverage'      => (int) round($eval['coverage'] * 100),
-            'ingredients'   => array_map(function ($i) use ($scale) {
-                $refQty = (float) $i['ref_quantity'];
-                $unit = $i['unit'] ?: null;
-                $missingIn = $i['missing'] > 0 ? InventoryService::fromRef($i['missing'], $unit, $refQty, $i['ref_unit']) : null;
-                return [
-                    'item_id' => (int) $i['shopping_item_id'],
-                    'name'    => $i['name'],
-                    'note'    => (string) $i['note'],
-                    'staple'  => (bool) $i['staple'],
-                    'need'    => ShoppingListService::quantityLabel(round((float) $i['quantity'] * $scale, 3), $unit),
-                    'have'    => InventoryService::label($i['stock'], $refQty, $i['ref_unit']),
-                    'missing' => $i['missing'] > 0
-                        ? ($missingIn !== null ? ShoppingListService::quantityLabel(round($missingIn, 3), $unit) : InventoryService::label($i['missing'], $refQty, $i['ref_unit']))
-                        : '',
-                ];
-            }, $eval['ingredients']),
-        ];
+        $this->repo(); // Standard-Klassifikation sicherstellen
+        return RecipeService::evaluateAll($this->hid, $recipes, $servings);
     }
 
     /** Einkaufslisten zur Auswahl; die automatische Liste steht immer vorne (wird bei Bedarf angelegt) */
@@ -345,8 +286,7 @@ final class RecipeController extends Controller
     }
 
     /**
-     * Formular prüfen. Zutaten: item_id (vorhandener virtueller Posten) oder name (wird gesucht/angelegt),
-     * Menge, Einheit passend zur Referenz des Postens, Notiz.
+     * Formular prüfen, Zutaten siehe RecipeService::ingredientRows().
      * @return array{0:array, 1:array, 2:int[]} Rezeptdaten, Zutaten, Klassenwert-IDs
      */
     private function validated(): array
@@ -362,41 +302,10 @@ final class RecipeController extends Controller
             'instructions' => mb_substr($r->str('instructions'), 0, 60000) ?: null,
         ];
 
-        $shop = new ShoppingRepository();
-        $ingredients = [];
-        foreach ($r->arr('ingredients') as $row) {
-            if (!is_array($row)) {
-                continue;
-            }
-            $qty = (float) str_replace(',', '.', trim((string) ($row['quantity'] ?? '')));
-            $unit = InventoryService::unit((string) ($row['unit'] ?? ''));
-            $item = !empty($row['item_id']) ? $shop->findItem((int) $row['item_id'], $this->hid) : null;
-            if (!$item) {
-                $itemName = mb_substr(trim((string) ($row['name'] ?? '')), 0, 190);
-                if ($itemName === '') {
-                    continue;
-                }
-                $existed = $shop->findItemByNormalized($this->hid, mb_substr(ShoppingListService::normalize($itemName), 0, 190));
-                $item = $shop->findItem(ShoppingListService::itemByName($this->hid, $itemName), $this->hid);
-                if (!$existed && $unit !== null) {
-                    // Neuer Posten: Referenz passend zur Zutat (1 kg bzw. 1 l)
-                    $ref = in_array($unit, ['g', 'kg'], true) ? 'kg' : 'l';
-                    $shop->updateItem((int) $item['id'], $this->hid, ['ref_quantity' => 1, 'ref_unit' => $ref]);
-                    $item['ref_unit'] = $ref;
-                }
-            }
-            if ($qty <= 0) {
-                $qty = 1.0;
-            }
-            if (!$item['staple'] && !InventoryService::compatible($unit, $item['ref_unit'])) {
-                $ref = InventoryService::unit($item['ref_unit']);
-                $this->json(['error' => "„{$item['name']}“ wird in " . ($ref ? "$ref (bzw. " . (in_array($ref, ['g', 'kg'], true) ? 'g/kg' : 'ml/l') . ')' : 'Stück')
-                    . ' geführt – bitte eine passende Einheit wählen oder die Referenz beim virtuellen Posten ändern.'], 422);
-            }
-            $ingredients[] = [
-                'shopping_item_id' => (int) $item['id'], 'quantity' => min(round($qty, 3), 99999), 'unit' => $unit,
-                'note' => mb_substr(trim((string) ($row['note'] ?? '')), 0, 190) ?: null,
-            ];
+        try {
+            $ingredients = RecipeService::ingredientRows($this->hid, $r->arr('ingredients'));
+        } catch (\DomainException $e) {
+            $this->json(['error' => $e->getMessage()], 422);
         }
         $values = $this->repo()->validValueIds($this->hid, $r->arr('values'));
         return [$data, $ingredients, $values];

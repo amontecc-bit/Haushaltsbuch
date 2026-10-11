@@ -19,11 +19,13 @@ Ergänzt `CLAUDE.md` um Details, die man beim Ändern einzelner Bereiche braucht
 | `products` | normalisierter Name → `default_category_id` (hier lernt die Posten-Kategorisierung) |
 | `purchases` / `purchase_items` | Einkauf (optional `account_id`, `transaction_id`, `file_path` = `|`-getrennte Pfade) und Posten |
 | `loans`, `loan_special_payments`, `loan_rate_changes` | Kreditdaten, Sondertilgungen, Zins-/Ratenänderungen ab Datum |
-| `settings` | Schlüssel/Wert je Haushalt: `ocr_mode`, `ai_api_key`, `ai_model`, `forecast_months`, `forecast_avg_months` |
+| `settings` | Schlüssel/Wert je Haushalt: `ocr_mode`, `ai_api_key`, `ai_model`, `forecast_months`, `forecast_avg_months`, `mcp_enabled` |
 | `shopping_items` / `shopping_item_products` | virtuelle Posten (006) ↔ echte Produkte (n:m); seit 008 mit `ref_quantity`/`ref_unit` (Referenzmenge), `shelf_days`, `min_stock` (in Referenzeinheiten), `staple` (Grundvorrat), `auto_restock`, `depleted_at`; je Zuordnung `factor` und eigene `shelf_days` |
 | `shopping_lists` / `shopping_list_entries` | Einkaufslisten; `is_auto` = die automatisch gepflegte Liste (eine je Haushalt) |
 | `inventory_lots` | Vorrats-Chargen je virtuellem Posten: `quantity`/`remaining` in Referenzeinheiten, `expires_on`, `source` purchase/manual, `purchase_id` + `product_id` (Schlüssel beim Abgleich) |
 | `recipes`, `recipe_ingredients`, `recipe_class_groups`/`_values`/`_links` | Rezepte (`servings`, Freitext), Zutaten = virtueller Posten + Menge/Einheit, Klassifikation als Gruppen mit Werten |
+| `oauth_clients`, `oauth_codes`, `oauth_tokens` | OAuth für den MCP-Server (009): per dynamischer Registrierung angelegte Clients (`redirect_uris` JSON, `secret_hash` nur bei vertraulichen Clients), Codes (10 min, PKCE-Challenge), je Verbindung eine Token-Zeile (Access 1 h, Refresh 90 Tage, beim Erneuern ausgetauscht). Alles nur als SHA-256 gespeichert |
+| `mcp_log` | Protokoll aller Änderungen über Claude (Tool, Zusammenfassung, Benutzer, Client) |
 
 Saldo eines Kontos = `opening_balance + SUM(transactions.amount bis Stichtag)`.
 
@@ -107,14 +109,44 @@ Kategorie-Auswertungen unter der Pseudo-ID `ReportService::TRANSFER_ID` (-2, „
 **Rezepte** (`RecipeService`): `evaluate()` rechnet Zutaten (skaliert auf Portionen) per `InventoryService::toRef()`
 in Referenzeinheiten um und vergleicht mit dem Bestand (gleicher Posten mehrfach teilt sich den Bestand, Grundvorrat
 zählt als vorhanden); `rank()` sortiert machbare zuerst, dann wenige fehlende, dann Abdeckung. Zutaten-Einheiten
-müssen zur Referenz passen (g/kg, ml/l oder Stück) – das prüft `RecipeController::validated()`.
+müssen zur Referenz passen (g/kg, ml/l oder Stück) – das prüft `RecipeService::ingredientRows()` (auch für Claude).
+`cook()`, `addMissingToList()`, `evaluateAll()` und `card()` liegen ebenfalls im Service und werden von
+`RecipeController` und den MCP-Tools gemeinsam genutzt.
+
+**Claude / MCP-Server** (`app/Services/Mcp/`, `McpController`, `OAuthController`):
+- Routen mit Zugriffsstufe `'api'` laufen ohne Sitzung und ohne CSRF-Prüfung (der Router startet die Sitzung erst
+  für alle anderen Routen) – die Action prüft selbst (Bearer-Token bzw. Client-Authentifizierung).
+- Ablauf: Claude ruft `POST /mcp` ohne Token → 401 mit `WWW-Authenticate: Bearer resource_metadata=…` →
+  `/.well-known/oauth-protected-resource` → `/.well-known/oauth-authorization-server` (für Installationen im
+  Unterordner zusätzlich `…/.well-known/openid-configuration`) → `POST /oauth/register` (nur Rückruf-Adressen zu
+  `claude.ai`/`claude.com`/localhost, `OAuthService::redirectAllowed()`) → `GET /oauth/authorize` (Login, Einwilligung,
+  Haushalt muss `mcp_enabled` haben) → `POST /oauth/token` (PKCE S256, Refresh-Rotation).
+- `McpController::handle()` prüft Token, Benutzer aktiv, gleicher Haushalt, `mcp_enabled`, setzt den Benutzer per
+  `Auth::actAs()` und reicht die JSON-RPC-Nachricht an `McpServer` (Protokoll, reine Klasse) mit den Tools aus
+  `McpTools` weiter. Zustandslos (keine `Mcp-Session-Id`, kein SSE: `GET /mcp` → 405).
+- **Grundsatz: keine Finanzdaten.** Tools geben nur Namen, Mengen, Daten und Status aus – keine Preise, Geschäfte,
+  Einkäufe, Kontostände oder Umsätze (eigene, schmale Ausgaben statt Controller-Payloads weiterreichen). Einzige
+  Ausnahme `book_cash_expense`: nur Ausgaben, nur Konten vom Typ `cash` mit `book`-Recht, ≤ 5.000 €, Datum höchstens
+  ein Jahr zurück, Antwort ohne Saldo, Notiz „per Claude erfasst“. Jede Änderung landet in `mcp_log`.
+- Tool-Gruppen erben von `ToolSet` (Parameter lesen, Posten/Kategorie per Name finden, Protokoll): `McpTools`
+  (Listen, Vorrat, Rezepte, Bargeld) und `ItemTools` (virtuelle Posten und Produkt-Zuordnung). `McpTools::all()`
+  fügt beide zusammen. Echte Produkte über `ProductRepository::overview()` – nur Name, Anzahl Käufe, letztes Kaufdatum
+  aus sichtbaren Einkäufen.
+- `merge_items` → `ShoppingListService::mergeItems()`: Faktor = Referenzen des Ziels je Referenz der Quelle
+  (`mergeFactor()`, null bei Gewicht ↔ Volumen ↔ Stück); `ShoppingRepository::mergeItem()` verschiebt in einer
+  Transaktion Produkt-Zuordnungen (Faktor umgerechnet, vorhandene des Ziels bleiben), Listeneinträge (gleiche Liste:
+  Menge addiert bei gleicher Einheit), Rezeptzutaten und Chargen (Mengen × Faktor) und löscht die Quelle.
+  `delete_item` verweigert Posten, die in Rezepten stecken (FK würde die Zutaten mitlöschen).
+- Fachliche Fehler eines Tools als `ToolError` werfen – sie gehen als `isError`-Ergebnis an Claude, das dann nachfragen
+  oder korrigieren kann; andere Exceptions werden geloggt und nur allgemein gemeldet.
 
 ## Tests
 
 - `tests/Unit/*Test.php` decken Money, Recurrence, CSV-Import (Fixtures Sparkasse Windows-1252, ING mit Vorspann,
   DKB, generisch), ReceiptTextParser (inkl. echter Tesseract-Ausgabe `rewe_ocr.txt`), Categorization,
   LoanCalculator (gegen geschlossene Annuitätenformel), Forecast, Einkaufsliste, Vorrat (Einheiten, Faktor aus dem
-  Namen, FIFO, Chargen-Abgleich, Auto-Liste) und Rezepte (Skalierung, Fehlmengen, Sortierung) ab. Controller/Views haben keine Unit-Tests.
+  Namen, FIFO, Chargen-Abgleich, Auto-Liste), Rezepte (Skalierung, Fehlmengen, Sortierung), MCP-Protokoll
+  (`McpServer`) und OAuth-Hilfen (PKCE, Rückruf-Adressen, Header) ab. Controller/Views haben keine Unit-Tests.
 - `tests/bootstrap.php` lädt Config + Helfer, **keine DB** – Services, die DB brauchen, über ihre statischen
   reinen Funktionen testen.
 
@@ -140,6 +172,12 @@ müssen zur Referenz passen (g/kg, ml/l oder Stück) – das prüft `RecipeContr
    `RewriteCond %{HTTP_COOKIE} hbtest=1` / `RewriteCond %{REQUEST_FILENAME} !-f` / `RewriteRule ^ __test.php [L,QSA]`.
    Test-Client mit Cookie `hbtest=1` gegen `http://127.0.0.1/...` (Pythons Cookie-Jar verliert Cookies bei `localhost`).
    Danach `.htaccess` zurücksetzen, `__test.php` löschen, Test-DB droppen und eigene Uploads in `storage/uploads/` entfernen.
+4. **MCP/OAuth Ende-zu-Ende** (gegen die Test-DB wie unter 3., dort `mcp_enabled` = 1 und ein Konto vom Typ `cash`):
+   mit Python `requests` registrieren (Rückruf `http://localhost:9999/callback`), `GET /oauth/authorize?…&__login=<id>`,
+   CSRF-Token und versteckte Felder aus der Einwilligungsseite lesen, `decision=allow` posten (`allow_redirects=False`),
+   Code aus `Location` gegen Token tauschen, dann JSON-RPC an `/mcp` mit `Authorization: Bearer …`
+   (`initialize`, `tools/list`, `tools/call`). Achtung: Jeder Aufruf einer normalen Seite der *echten* Installation
+   führt ausstehende Migrationen dort aus (gewollt, aber vorher bedenken).
 
 ## Bedienungsanleitung und Screenshots
 

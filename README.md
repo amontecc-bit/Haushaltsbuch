@@ -22,6 +22,7 @@ Alle Frontend-Bibliotheken liegen lokal unter `public/assets/vendor/`. Es wird k
 | **Einkäufe** | Posten von Hand, per **Foto** (Kamera direkt in der App, mehrere Fotos für lange Bons) oder per **PDF** (Rechnung/Einkaufsliste, auch gescannt). Erkennung **lokal im Browser** (Tesseract.js, kostenlos) oder per **KI** (Claude API). Verknüpfbar mit einer Kontobuchung. |
 | **Einkaufsliste** | Listen aus Artikeln der bisherigen Einkäufe und neuen Posten, mit Menge/Einheit, bisherigem Min-/Max-Preis und günstigstem Laden, nach Kategorie gruppiert. **Virtuelle Posten** (z. B. „Milch“) fassen gleiche Artikel aus verschiedenen Läden zusammen; Zuordnungsseite mit allen noch nicht zugeordneten Artikeln und Drag & Drop. Druckansicht bzw. PDF. Nach dem Erfassen eines Einkaufs werden gekaufte Posten automatisch abgehakt. |
 | **Vorrat & Rezepte** | Vorrat je virtuellem Posten: Referenzmenge (z. B. 1 l), Ausgleichsfaktor je Artikel (0,5-l-Packung = 0,5, Vorschlag aus dem Namen), Verbrauchsdauer je Artikel. Jeder Einkauf wird zur Charge mit Ablaufdatum, „Gekocht“ bucht Zutaten ab, Korrektur von Hand. **Automatische Einkaufsliste** mit aufgebrauchten, abgelaufenen und knappen Posten. **Rezepte** mit Freitext, Zutatenliste aus virtuellen Posten, Portionen (umrechenbar) und eigenen Klassifikationen (z. B. morgens/mittags/abends). **Rezeptvorschläge**: zuerst vollständig machbare, auf Wunsch weitere mit Anzeige, was fehlt; Fehlendes auf eine Einkaufsliste. |
+| **Claude (MCP)** | Optionaler MCP-Server für die Claude-App auf dem Smartphone: Einkaufslisten, Vorrat und Rezepte per Chat oder Sprache („Setz Milch auf die Liste“, „Was kann ich heute kochen?“, Rezept aus einem Text anlegen), virtuelle Posten aufräumen (Dubletten zusammenführen, Produkte zuordnen, Referenzen setzen) und Bargeld-Ausgaben buchen („12,50 bar beim Bäcker“). **Keine Finanzdaten:** Kontostände, Umsätze, Preise und Auswertungen sind über diesen Zugang nicht abrufbar. Anmeldung per OAuth mit Einwilligungsseite, Verbindungen jederzeit trennbar, Protokoll aller Änderungen. |
 | **Kategorien** | Zweistufig, gelten für Buchungen und Posten. Automatische Zuordnung in dieser Reihenfolge: eigene Regeln → Gelerntes (gleicher Empfänger, bekanntes Produkt, ähnliches Produkt) → eingebaute Stichwörter. Korrekturen werden gelernt. |
 | **Auswertungen** | Ausgaben nach Kategorie mit Drilldown, Monatsverlauf, gestapelt nach Kategorien, Top-Empfänger, Sparquote. Mit Einkäufen verknüpfte Buchungen werden nach Posten aufgeschlüsselt. Bei Filter auf ein Konto zählen Umbuchungen als Einnahme/Ausgabe (eigene Zeile „Umbuchungen“), damit die Bilanz des Kontos stimmt; über alle Konten bleiben sie außen vor. Einzelposten-Analyse mit Kategorie-Pfad, Korrektur falsch zugeordneter Artikel und Preisverlauf je Produkt. CSV-Export. |
 | **Prognose** | Kontostände für 3 bis 36 Monate aus Fixkosten und dem Ø der variablen Ausgaben der letzten Monate (Aufschlüsselung je Konto; importierte Umbuchungen zwischen eigenen Konten werden erkannt, Einmaleffekte lassen sich über Kategorien ausklammern). **Szenarien:** je Konto einen eigenen variablen Monatswert festlegen (leer = berechneter Ø); der berechnete Ø läuft als gestrichelte Vergleichslinie mit. Warnt, wenn der Saldo negativ wird. |
@@ -62,6 +63,23 @@ Tests: `php vendor/bin/phpunit`
 Voraussetzungen: PHP ≥ 8.1 mit `pdo_mysql`, `mbstring`, `curl`, `fileinfo`, `gd`, außerdem Apache mit `mod_rewrite`
 (bei nginx alle Anfragen, die keine Datei sind, auf `public/index.php` leiten).
 
+## Claude auf dem Smartphone (MCP, optional)
+
+Das Haushaltsbuch enthält einen MCP-Server unter `/mcp`. Damit lässt es sich als **benutzerdefinierter Konnektor** in
+Claude einbinden (claude.ai, Claude-App auf dem Smartphone, Claude Desktop). Erlaubt sind nur Einkaufslisten, Vorrat,
+Rezepte, die Pflege der virtuellen Posten (echte Produkte nur mit Namen) und das Buchen von Bargeld-Ausgaben (höchstens 5.000 €, nur Bargeld-Konten mit Buchungsrecht). Kontostände,
+Umsätze, Preise und Auswertungen gibt es über diesen Zugang bewusst nicht.
+
+1. Ein Administrator schaltet den Zugang unter *Einstellungen › Claude (MCP)* ein. Dort steht auch die Adresse des Servers.
+2. Auf claude.ai unter *Einstellungen › Konnektoren* einen benutzerdefinierten Konnektor mit dieser Adresse hinzufügen
+   und „Verbinden“ wählen. Das Haushaltsbuch fragt nach Anmeldung und Einwilligung (OAuth 2.1 mit PKCE).
+3. Danach steht der Konnektor auch in der Claude-App auf dem Smartphone bereit.
+
+Voraussetzungen: **HTTPS** und eine öffentlich erreichbare Adresse (lokal unter XAMPP geht es nicht). Ist die öffentliche
+Adresse nicht zuverlässig aus der Anfrage ableitbar (Proxy), `APP_URL=https://haushalt.example.de` in `.env` setzen.
+Rückruf-Adressen sind nur zu `claude.ai`/`claude.com` und `localhost` erlaubt (`MCP_REDIRECT_HOSTS` ändert die Liste).
+Die `.htaccess` reicht den `Authorization`-Header an PHP weiter. Bei nginx muss das die Konfiguration übernehmen.
+
 ## KI-Erkennung von Kassenbons (optional)
 
 Unter *Einstellungen* einen Anthropic-API-Schlüssel hinterlegen (oder `ANTHROPIC_API_KEY` in `.env`) und den Modus „KI“ wählen.
@@ -77,7 +95,8 @@ app/Core/          Router, Request, View, Session, CSRF, Auth, Money
 app/Controllers/   ein Controller je Bereich
 app/Repositories/  Datenbankzugriff (PDO, Prepared Statements, immer nach Haushalt gefiltert)
 app/Services/      Fachlogik: RecurrenceService, CsvImportService, CategorizationService,
-                   ReceiptTextParser, AiReceiptRecognizer, ReportService, ForecastService, LoanCalculator
+                   ReceiptTextParser, AiReceiptRecognizer, ReportService, ForecastService, LoanCalculator,
+                   InventoryService, RecipeService, OAuthService; Mcp/ (MCP-Server und Tools für Claude)
 app/Views/         PHP-Templates
 database/migrations/  SQL-Migrationen (php bin/migrate.php)
 public/            Webroot: index.php, Assets, Manifest, Service Worker

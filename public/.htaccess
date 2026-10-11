@@ -1,6 +1,12 @@
 Options -Indexes
 DirectoryIndex index.php
+# Authorization-Header (Bearer-Token für Claude/MCP) an PHP weiterreichen – bei CGI/FastCGI (z. B. IONOS) fehlt er sonst
+<IfModule mod_setenvif.c>
+    SetEnvIf Authorization "(.+)" HTTP_AUTHORIZATION=$1
+</IfModule>
 RewriteEngine On
+RewriteCond %{HTTP:Authorization} .
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
 # Basis-URL selbst ermitteln statt RewriteBase: ohne sie hängen manche Hoster (z. B. IONOS)
 # den physischen Pfad vor "index.php" → 500er bei allen Routen außer "/"
 RewriteCond %{REQUEST_URI}::$0 ^(/.+)/(.*)::\2$

@@ -10,6 +10,8 @@ use App\Controllers\ForecastController;
 use App\Controllers\ImportController;
 use App\Controllers\InventoryController;
 use App\Controllers\LoanController;
+use App\Controllers\McpController;
+use App\Controllers\OAuthController;
 use App\Controllers\PurchaseController;
 use App\Controllers\RecipeController;
 use App\Controllers\RecurringController;
@@ -169,3 +171,18 @@ $router->get('/settings', [SettingsController::class, 'index']);
 $router->post('/settings', [SettingsController::class, 'update'], 'admin');
 $router->post('/settings/password', [SettingsController::class, 'password']);
 $router->get('/more', [SettingsController::class, 'more']);
+$router->get('/settings/claude', [SettingsController::class, 'claude']);
+$router->post('/settings/claude', [SettingsController::class, 'claudeToggle'], 'admin');
+$router->post('/settings/claude/{id}/revoke', [SettingsController::class, 'claudeRevoke']);
+
+// Claude (MCP-Server) mit OAuth – 'api' = ohne Sitzung/CSRF, die Actions prüfen selbst
+$router->get('/.well-known/oauth-protected-resource', [OAuthController::class, 'protectedResource'], 'api');
+$router->get('/.well-known/oauth-protected-resource/mcp', [OAuthController::class, 'protectedResource'], 'api');
+$router->get('/.well-known/oauth-authorization-server', [OAuthController::class, 'authorizationServer'], 'api');
+$router->get('/.well-known/openid-configuration', [OAuthController::class, 'authorizationServer'], 'api');
+$router->post('/oauth/register', [OAuthController::class, 'register'], 'api');
+$router->post('/oauth/token', [OAuthController::class, 'token'], 'api');
+$router->get('/oauth/authorize', [OAuthController::class, 'authorize'], 'guest');
+$router->post('/oauth/authorize', [OAuthController::class, 'decide']);
+$router->post('/mcp', [McpController::class, 'handle'], 'api');
+$router->get('/mcp', [McpController::class, 'stream'], 'api');
