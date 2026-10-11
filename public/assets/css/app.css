@@ -160,6 +160,17 @@ body.guest { display: flex; align-items: center; justify-content: center; min-he
 .shop-edit input:not(.shop-qty) { flex: 1 1 10rem; width: auto; }
 .shop-done { color: var(--bs-secondary-color); }
 
+/* Rezepte: Zutatenzeile (mobil zweizeilig) */
+.recipe-row { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+.recipe-row-name { flex: 1 1 100%; }
+.recipe-row-qty { width: 5rem; flex: 0 0 auto; text-align: right; }
+.recipe-row-unit { width: auto; flex: 0 0 auto; }
+.recipe-row-note { flex: 1 1 6rem; width: auto; }
+@media (min-width: 576px) {
+    .recipe-row-name { flex: 1 1 10rem; }
+}
+.recipe-text { white-space: normal; line-height: 1.6; }
+
 /* Zuordnung Produkte ↔ virtuelle Posten */
 .assign-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap: .75rem; align-items: start; }
 .assign-zone { transition: box-shadow .12s, border-color .12s; }

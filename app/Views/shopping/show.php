@@ -4,6 +4,13 @@ use App\Services\ShoppingListService;
 $cfg = ['listId' => (int) $list['id'], 'entries' => $entries, 'items' => $items, 'catalog' => $catalog];
 ?>
 <div x-data="shoppingList(<?= e(json_encode($cfg)) ?>)">
+    <?php if (!empty($list['is_auto'])): ?>
+        <p class="small text-body-secondary">
+            <i class="bi bi-robot"></i> Diese Liste pflegt die App selbst: Posten aus dem <a href="<?= e(url('/inventory')) ?>">Vorrat</a>, die
+            aufgebraucht, abgelaufen oder unter dem Mindestbestand sind, kommen automatisch dazu und verschwinden wieder, sobald sie
+            nachgekauft sind. Du kannst sie wie jede andere Liste ergänzen und abhaken.
+        </p>
+    <?php endif; ?>
     <div class="alert alert-dismissible" :class="'alert-' + msg.type" x-show="msg.text" x-cloak>
         <span x-text="msg.text"></span>
         <button type="button" class="btn-close" @click="msg.text = ''" aria-label="Schließen"></button>

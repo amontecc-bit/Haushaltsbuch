@@ -8,8 +8,10 @@ use App\Controllers\CategoryController;
 use App\Controllers\DashboardController;
 use App\Controllers\ForecastController;
 use App\Controllers\ImportController;
+use App\Controllers\InventoryController;
 use App\Controllers\LoanController;
 use App\Controllers\PurchaseController;
+use App\Controllers\RecipeController;
 use App\Controllers\RecurringController;
 use App\Controllers\ReportController;
 use App\Controllers\RuleController;
@@ -90,6 +92,7 @@ $router->post('/shopping/items/{id}', [ShoppingController::class, 'updateItem'])
 $router->post('/shopping/items/{id}/delete', [ShoppingController::class, 'deleteItem']);
 $router->post('/shopping/items/{id}/products', [ShoppingController::class, 'linkProduct']);
 $router->post('/shopping/items/{id}/products/{pid}/delete', [ShoppingController::class, 'unlinkProduct']);
+$router->post('/shopping/items/{id}/products/{pid}', [ShoppingController::class, 'updateLink']);
 $router->get('/shopping/{id}', [ShoppingController::class, 'show']);
 $router->post('/shopping/{id}', [ShoppingController::class, 'update']);
 $router->post('/shopping/{id}/delete', [ShoppingController::class, 'delete']);
@@ -99,6 +102,25 @@ $router->post('/shopping/{id}/match', [ShoppingController::class, 'match']);
 $router->post('/shopping/{id}/clear-done', [ShoppingController::class, 'clearDone']);
 $router->post('/shopping/{id}/entries/{eid}', [ShoppingController::class, 'updateEntry']);
 $router->post('/shopping/{id}/entries/{eid}/delete', [ShoppingController::class, 'deleteEntry']);
+
+// Vorrat & Rezepte
+$router->get('/inventory', [InventoryController::class, 'index']);
+$router->post('/inventory/rebuild', [InventoryController::class, 'rebuild']);
+$router->post('/inventory/lots/{id}', [InventoryController::class, 'updateLot']);
+$router->post('/inventory/lots/{id}/delete', [InventoryController::class, 'deleteLot']);
+$router->post('/inventory/{id}', [InventoryController::class, 'adjust']);
+$router->get('/recipes', [RecipeController::class, 'index']);
+$router->post('/recipes', [RecipeController::class, 'store']);
+$router->get('/recipes/create', [RecipeController::class, 'create']);
+$router->get('/recipes/suggestions', [RecipeController::class, 'suggestions']);
+$router->get('/recipes/classes', [RecipeController::class, 'classes']);
+$router->post('/recipes/classes', [RecipeController::class, 'saveClasses']);
+$router->get('/recipes/{id}', [RecipeController::class, 'show']);
+$router->get('/recipes/{id}/edit', [RecipeController::class, 'edit']);
+$router->post('/recipes/{id}', [RecipeController::class, 'update']);
+$router->post('/recipes/{id}/delete', [RecipeController::class, 'delete']);
+$router->post('/recipes/{id}/cook', [RecipeController::class, 'cook']);
+$router->post('/recipes/{id}/shopping', [RecipeController::class, 'toShoppingList']);
 
 // Auswertungen & Prognose
 $router->get('/reports', [ReportController::class, 'index']);

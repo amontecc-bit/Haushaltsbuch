@@ -9,6 +9,7 @@ use App\Core\Request;
 use App\Core\Response;
 use App\Core\Session;
 use App\Core\View;
+use App\Services\InventoryService;
 use App\Services\RecurrenceService;
 
 abstract class Controller
@@ -30,6 +31,11 @@ abstract class Controller
             Session::set('recurring_checked', date('Y-m-d'));
             RecurrenceService::materializeDue($this->hid);
             RecurrenceService::linkExisting($this->hid);
+            try {
+                InventoryService::refreshAutoList($this->hid); // abgelaufene Vorräte auf die Auto-Liste
+            } catch (\PDOException $e) {
+                error_log('Auto-Einkaufsliste: ' . $e->getMessage()); // z. B. Migration noch nicht gelaufen
+            }
         }
     }
 

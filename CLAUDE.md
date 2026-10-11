@@ -7,7 +7,8 @@ technische Details zu Abläufen und Tests in `docs/DEVELOPMENT.md`, die Bedienun
 ## Projekt in Kürze
 
 Haushaltsbuch-Web-App für eine Familie: Konten, Buchungen, Fixkosten, CSV-Import, Einkäufe mit Einzelposten
-(Hand/PDF/Kassenbon-Foto, lokale OCR oder Claude API), Einkaufslisten aus virtuellen Posten, Kategorisierung mit Lernen, Auswertungen, Prognose, Kredite.
+(Hand/PDF/Kassenbon-Foto, lokale OCR oder Claude API), Einkaufslisten aus virtuellen Posten, Vorrat mit automatischer
+Einkaufsliste, Rezepte mit Vorschlägen nach Vorrat, Kategorisierung mit Lernen, Auswertungen, Prognose, Kredite.
 **UI-Sprache und Code-Kommentare: Deutsch.** Bezeichner (Klassen, Methoden, Spalten) Englisch.
 
 - PHP 8.3 (Minimum 8.1), eigenes schlankes MVC, **kein Framework**. Composer nur für: `smalot/pdfparser`,
@@ -63,6 +64,8 @@ Header `X-CSRF-Token`); `HB.post()` in `public/assets/js/app.js` setzt den Heade
 | `ForecastService` | Prognose: Saldo heute + Fixkosten-Termine + variabler Monatssaldo je Konto – Ø (ohne `recurring_id`/Umbuchungen/erkannte Import-Paare/ausgeklammerte Kategorien) oder Handwert aus einem Szenario |
 | `LoanCalculator` | Tilgungsplan (30/360, erste Periode taggenau), Sondertilgungen, Zins-/Ratenänderungen, `balanceAt()` |
 | `ShoppingListService` | Einkaufsliste: `match()` gleicht offene Einträge mit den Posten eines Einkaufs ab (zugeordnete Produkte des virtuellen Postens, sonst exakt gleicher normalisierter Name → Produkt wird gelernt); `matchPurchase()` läuft nach jedem Speichern eines Einkaufs (nur Einträge, die bis zum Einkaufstag angelegt wurden) |
+| `InventoryService` | Vorrat je virtuellem Posten in Referenzeinheiten: Einheiten (`toRef`), Faktor aus dem Produktnamen (`guessFactor`), Chargen je Einkauf (`syncPurchase`, stabil über purchase_id+product_id), FIFO-Verbrauch, Korrektur, `refreshAutoList()` (Liste „Automatisch“) |
+| `RecipeService` | Rezept gegen Vorrat (`evaluate`, Portionen skaliert, Grundvorrat), Sortierung der Vorschläge (`rank`) |
 | `Migrator` | führt `database/migrations/*.sql` aus (auch automatisch beim ersten Seitenaufruf/Setup) |
 
 ## Konventionen (bitte einhalten)
@@ -114,7 +117,7 @@ Header `X-CSRF-Token`); `HB.post()` in `public/assets/js/app.js` setzt den Heade
 
 ## Status / mögliche nächste Schritte
 
-Alle geplanten Module sind umgesetzt und getestet (85 PHPUnit-Tests; Browser-Durchlauf Foto → lokale OCR → Speichern).
+Alle geplanten Module sind umgesetzt und getestet (101 PHPUnit-Tests; Browser-Durchlauf Foto → lokale OCR → Speichern).
 Noch nicht real getestet: Kamera auf echtem Smartphone (braucht HTTPS), KI-Erkennung mit echtem API-Schlüssel.
 Ideen: Budgets je Kategorie mit Warnung, Sparziele, Bearbeiten von CSV-Profilen in der Oberfläche,
 Konten-Export/Backup, E-Mail-Einladung für Familienmitglieder, Zwei-Faktor-Login.

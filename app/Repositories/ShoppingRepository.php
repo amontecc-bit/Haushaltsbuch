@@ -37,6 +37,32 @@ final class ShoppingRepository extends Repository
         $this->updateWhere('shopping_lists', ['name' => $name], ['id' => $id, 'household_id' => $householdId]);
     }
 
+    /** Die automatisch gepflegte Liste („Automatisch“), bei Bedarf angelegt */
+    public function autoList(int $householdId): array
+    {
+        $list = $this->one('SELECT * FROM shopping_lists WHERE household_id = ? AND is_auto = 1 ORDER BY id LIMIT 1', [$householdId]);
+        if ($list) {
+            return $list;
+        }
+        $id = $this->insert('shopping_lists', ['household_id' => $householdId, 'name' => 'Automatisch', 'is_auto' => 1]);
+        return $this->findList($id, $householdId);
+    }
+
+    public function autoListExists(int $householdId): bool
+    {
+        return (bool) $this->value('SELECT 1 FROM shopping_lists WHERE household_id = ? AND is_auto = 1 LIMIT 1', [$householdId]);
+    }
+
+    /** @return array<int, array> Posten-ID => Eintrag der Liste */
+    public function entriesByItem(int $listId): array
+    {
+        $out = [];
+        foreach ($this->many('SELECT * FROM shopping_list_entries WHERE list_id = ?', [$listId]) as $e) {
+            $out[(int) $e['shopping_item_id']] = $e;
+        }
+        return $out;
+    }
+
     public function deleteList(int $id, int $householdId): void
     {
         $this->exec('DELETE FROM shopping_lists WHERE id = ? AND household_id = ?', [$id, $householdId]);
@@ -196,10 +222,13 @@ final class ShoppingRepository extends Repository
         $this->exec('DELETE FROM shopping_items WHERE id = ? AND household_id = ?', [$id, $householdId]);
     }
 
-    /** Produkt zuordnen (Haushalt von Posten und Produkt vorher prüfen) */
-    public function linkProduct(int $itemId, int $productId): void
+    /** Produkt zuordnen (Haushalt von Posten und Produkt vorher prüfen); $factor nur für neue Zuordnungen */
+    public function linkProduct(int $itemId, int $productId, ?float $factor = null): void
     {
-        $this->exec('INSERT IGNORE INTO shopping_item_products (shopping_item_id, product_id) VALUES (?, ?)', [$itemId, $productId]);
+        $this->exec(
+            'INSERT IGNORE INTO shopping_item_products (shopping_item_id, product_id, factor) VALUES (?, ?, ?)',
+            [$itemId, $productId, $factor ?? 1]
+        );
     }
 
     public function unlinkProduct(int $itemId, int $productId): void
@@ -207,18 +236,30 @@ final class ShoppingRepository extends Repository
         $this->exec('DELETE FROM shopping_item_products WHERE shopping_item_id = ? AND product_id = ?', [$itemId, $productId]);
     }
 
-    /** @return array<int, array<int, array{id:int, name:string}>> Posten-ID => zugeordnete Produkte */
+    /** Faktor zur Referenzmenge und Verbrauchsdauer eines zugeordneten Produkts (Haushalt vorher prüfen) */
+    public function updateLink(int $itemId, int $productId, float $factor, ?int $shelfDays): void
+    {
+        $this->exec(
+            'UPDATE shopping_item_products SET factor = ?, shelf_days = ? WHERE shopping_item_id = ? AND product_id = ?',
+            [$factor, $shelfDays, $itemId, $productId]
+        );
+    }
+
+    /** @return array<int, array<int, array{id:int, name:string, factor:float, shelf_days:?int}>> Posten-ID => zugeordnete Produkte */
     public function productsByItem(int $householdId, ?array $itemIds = null): array
     {
         $filter = $itemIds === null ? '' : ' AND s.id IN (' . self::in($itemIds) . ')';
         $out = [];
         foreach ($this->many(
-            'SELECT sip.shopping_item_id, pr.id, pr.name FROM shopping_item_products sip
+            'SELECT sip.shopping_item_id, sip.factor, sip.shelf_days, pr.id, pr.name FROM shopping_item_products sip
              JOIN shopping_items s ON s.id = sip.shopping_item_id JOIN products pr ON pr.id = sip.product_id
              WHERE s.household_id = ?' . $filter . ' ORDER BY pr.name',
             [$householdId, ...($itemIds ?? [])]
         ) as $r) {
-            $out[(int) $r['shopping_item_id']][] = ['id' => (int) $r['id'], 'name' => $r['name']];
+            $out[(int) $r['shopping_item_id']][] = [
+                'id' => (int) $r['id'], 'name' => $r['name'], 'factor' => (float) $r['factor'],
+                'shelf_days' => $r['shelf_days'] !== null ? (int) $r['shelf_days'] : null,
+            ];
         }
         return $out;
     }

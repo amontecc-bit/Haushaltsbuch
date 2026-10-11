@@ -16,6 +16,7 @@ use App\Repositories\SettingsRepository;
 use App\Repositories\TransactionRepository;
 use App\Services\AiReceiptRecognizer;
 use App\Services\CategorizationService;
+use App\Services\InventoryService;
 use App\Services\ReceiptTextParser;
 use App\Services\ShoppingListService;
 
@@ -138,6 +139,7 @@ final class PurchaseController extends Controller
         }
         @rmdir(Config::get('paths.uploads') . "/purchases/$id");
         $repo->delete($id, $this->hid);
+        InventoryService::refreshAutoList($this->hid); // Chargen des Einkaufs sind mit gelöscht
         $this->redirect('/purchases', 'Einkauf gelöscht.');
     }
 
@@ -315,6 +317,9 @@ final class PurchaseController extends Controller
     private function tickShoppingList(int $purchaseId, array $data): void
     {
         $n = ShoppingListService::matchPurchase($this->hid, $purchaseId, $data['purchase_date']);
+        // Erst nach dem Abgleich: dabei neu gelernte Produkt-Zuordnungen zählen schon zum Vorrat
+        InventoryService::syncPurchase($this->hid, $purchaseId);
+        InventoryService::refreshAutoList($this->hid);
         if ($n) {
             Session::flash('success', ($n === 1 ? '1 Posten' : "$n Posten") . ' der Einkaufsliste als gekauft abgehakt.');
         }

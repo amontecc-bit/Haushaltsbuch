@@ -13,10 +13,13 @@ declare(strict_types=1);
  */
 
 use App\Core\Database;
+use App\Repositories\RecipeRepository;
+use App\Repositories\ShoppingRepository;
 use App\Repositories\CategoryRepository;
 use App\Repositories\HouseholdRepository;
 use App\Repositories\UserRepository;
 use App\Services\CategorizationService;
+use App\Services\InventoryService;
 use App\Services\Migrator;
 use App\Services\RecurrenceService;
 
@@ -194,6 +197,7 @@ $product = static fn (string $name): int => (int) $db->query('SELECT id FROM pro
 $listId = $insert('shopping_lists', ['household_id' => $hid, 'name' => 'Wocheneinkauf', 'created_by' => $anna,
     'created_at' => date('Y-m-d H:i:s', strtotime('-3 days'))]);
 $lastAldi = (int) $db->query("SELECT MAX(id) FROM purchases WHERE household_id = $hid AND store = 'ALDI'")->fetchColumn();
+$itemIds = [];
 foreach ([
     ['Milch', 'Milchprodukte & Eier', ['Bio Vollmilch 1L', 'Milsani Frische Milch 1L'], 3, null, null],
     ['Käse', 'Milchprodukte & Eier', ['Gouda Scheiben', 'Gouda jung Scheiben'], 1, null, 'gerne jung'],
@@ -207,6 +211,7 @@ foreach ([
 ] as [$name, $category, $products, $qty, $unit, $note]) {
     $itemId = $insert('shopping_items', ['household_id' => $hid, 'name' => $name, 'normalized' => CategorizationService::normalizeProduct($name),
         'category_id' => $cat($category)]);
+    $itemIds[$name] = $itemId;
     foreach ($products as $p) {
         $insert('shopping_item_products', ['shopping_item_id' => $itemId, 'product_id' => $product($p)]);
     }
@@ -215,6 +220,76 @@ foreach ([
         'note' => $done ? null : $note, 'created_at' => date('Y-m-d H:i:s', strtotime('-3 days')),
         'done_at' => $done ? date('Y-m-d H:i:s', strtotime('-2 days')) : null, 'purchase_id' => $done ? $lastAldi : null]);
 }
+
+// Vorrat: Referenzmengen und Verbrauchsdauer, weitere virtuelle Posten für Rezepte, Chargen aus den Einkäufen
+foreach ([
+    // Name => [Referenzmenge, Einheit, Verbrauchsdauer, Grundvorrat, Kategorie, Produkt]
+    'Milch' => [1, 'l', 7], 'Käse' => [1, null, 14], 'Butter' => [250, 'g', 21], 'Bananen' => [1, 'kg', 6],
+    'Tomaten' => [1, 'kg', 7], 'Brot' => [1, null, 4], 'Nudeln' => [500, 'g', null], 'Mineralwasser' => [1.5, 'l', null],
+    'Spülmittel' => [1, null, 60],
+    'Eier' => [1, null, 21, false, 'Milchprodukte & Eier'], 'Mehl' => [1, 'kg', null, false, 'Vorrat & Konserven'],
+    'Zwiebeln' => [1, 'kg', 30, false, 'Obst & Gemüse'], 'Paprika' => [1, null, 7, false, 'Obst & Gemüse'],
+    'Reis' => [1, 'kg', null, false, 'Vorrat & Konserven'], 'Hähnchenbrust' => [1, null, 3, false, 'Fleisch & Fisch', 'Hähnchenbrust'],
+    'Olivenöl' => [1, 'l', null, true, 'Vorrat & Konserven'], 'Salz' => [1, 'kg', null, true, 'Vorrat & Konserven'],
+] as $name => $cfg) {
+    [$refQty, $refUnit, $days] = $cfg;
+    $data = ['ref_quantity' => $refQty, 'ref_unit' => $refUnit, 'shelf_days' => $days, 'staple' => (int) ($cfg[3] ?? false)];
+    if (!isset($itemIds[$name])) {
+        $itemIds[$name] = $insert('shopping_items', ['household_id' => $hid, 'name' => $name,
+            'normalized' => CategorizationService::normalizeProduct($name), 'category_id' => $cat($cfg[4])] + $data);
+        if (isset($cfg[5])) {
+            $insert('shopping_item_products', ['shopping_item_id' => $itemIds[$name], 'product_id' => $product($cfg[5])]);
+        }
+    } else {
+        (new ShoppingRepository())->updateItem($itemIds[$name], $hid, $data);
+    }
+}
+// Ausgleichsfaktor aus dem Produktnamen (z. B. Mineralwasser 6x1,5L = 6 Flaschen à 1,5 l)
+foreach ($db->query("SELECT sip.shopping_item_id, sip.product_id, pr.name, s.ref_quantity, s.ref_unit FROM shopping_item_products sip
+                     JOIN products pr ON pr.id = sip.product_id JOIN shopping_items s ON s.id = sip.shopping_item_id") as $r) {
+    $f = InventoryService::guessFactor($r['name'], (float) $r['ref_quantity'], $r['ref_unit']);
+    if ($f) {
+        (new ShoppingRepository())->updateLink((int) $r['shopping_item_id'], (int) $r['product_id'], $f, null);
+    }
+}
+InventoryService::rebuild($hid, 90);
+foreach (['Eier' => 6, 'Mehl' => 0.8, 'Zwiebeln' => 0.5] as $name => $target) {
+    InventoryService::adjust($hid, (new ShoppingRepository())->findItem($itemIds[$name], $hid), $target);
+}
+InventoryService::consume($hid, $itemIds['Milch'], 0.5);
+// Butter: Packung vor 25 Tagen, inzwischen abgelaufen → steht auf der automatischen Einkaufsliste
+$insert('inventory_lots', ['household_id' => $hid, 'shopping_item_id' => $itemIds['Butter'], 'quantity' => 1, 'remaining' => 0.4,
+    'acquired_on' => date('Y-m-d', strtotime('-25 days')), 'expires_on' => date('Y-m-d', strtotime('-4 days')), 'source' => 'manual']);
+
+// Rezepte mit Klassifikation
+$recipes = new RecipeRepository();
+$recipes->ensureDefaultClasses($hid);
+$groups = $recipes->classGroups($hid);
+$groups[] = ['name' => 'Art', 'values' => [['name' => 'vegetarisch'], ['name' => 'mit Fleisch']]];
+$recipes->saveClasses($hid, $groups);
+$valueId = [];
+foreach ($recipes->classGroups($hid) as $g) {
+    foreach ($g['values'] as $v) {
+        $valueId[$v['name']] = $v['id'];
+    }
+}
+foreach ([
+    ['Pfannkuchen', 4, ['morgens', 'mittags', 'vegetarisch'], [['Mehl', 250, 'g', null], ['Milch', 0.5, 'l', null], ['Eier', 3, null, null], ['Butter', 30, 'g', 'zum Ausbacken'], ['Salz', 1, null, '1 Prise']],
+        "Mehl, Milch, Eier und eine Prise Salz zu einem glatten Teig verrühren und 15 Minuten quellen lassen.\nIn einer Pfanne etwas Butter erhitzen, eine Kelle Teig hineingeben und von beiden Seiten goldbraun backen.\nDazu passen Apfelmus, Zimt und Zucker oder Marmelade."],
+    ['Spaghetti mit Tomatensoße', 2, ['mittags', 'abends', 'vegetarisch'], [['Nudeln', 250, 'g', null], ['Tomaten', 500, 'g', 'reif'], ['Zwiebeln', 100, 'g', 'gewürfelt'], ['Olivenöl', 2, null, '2 EL'], ['Salz', 1, null, null]],
+        "Zwiebeln in Olivenöl glasig dünsten, Tomaten würfeln und 15 Minuten mitköcheln lassen, mit Salz abschmecken.\nSpaghetti in reichlich Salzwasser bissfest kochen und mit der Soße mischen."],
+    ['Käsebrot', 1, ['morgens', 'abends', 'vegetarisch'], [['Brot', 0.2, null, '2 Scheiben'], ['Käse', 0.25, null, null], ['Butter', 10, 'g', null]],
+        "Brot mit Butter bestreichen und mit Käse belegen."],
+    ['Hähnchen mit Paprika und Reis', 2, ['abends', 'mit Fleisch'], [['Hähnchenbrust', 1, null, null], ['Paprika', 2, null, 'rot und gelb'], ['Reis', 150, 'g', null], ['Zwiebeln', 100, 'g', null], ['Olivenöl', 2, null, '2 EL']],
+        "Reis nach Packungsangabe garen. Hähnchen in Streifen schneiden und in Olivenöl scharf anbraten.\nZwiebeln und Paprika dazugeben, 8 Minuten mitbraten, würzen und mit dem Reis servieren."],
+    ['Bananen-Milchshake', 2, ['morgens', 'vegetarisch'], [['Bananen', 300, 'g', null], ['Milch', 0.4, 'l', 'kalt']],
+        "Bananen schälen und mit der kalten Milch im Mixer fein pürieren."],
+] as [$name, $servings, $classes, $ings, $text]) {
+    $rid = $recipes->create($hid, ['name' => $name, 'servings' => $servings, 'instructions' => $text, 'created_by' => $anna]);
+    $recipes->replaceIngredients($rid, array_map(fn ($i) => ['shopping_item_id' => $itemIds[$i[0]], 'quantity' => $i[1], 'unit' => $i[2], 'note' => $i[3]], $ings));
+    $recipes->setClasses($rid, array_map(fn ($c) => $valueId[$c], $classes));
+}
+InventoryService::refreshAutoList($hid);
 
 // Szenario und Einstellungen
 $sid = $insert('forecast_scenarios', ['household_id' => $hid, 'name' => 'Sparsamer Monat', 'note' => 'Weniger Essen gehen, kein Urlaub']);

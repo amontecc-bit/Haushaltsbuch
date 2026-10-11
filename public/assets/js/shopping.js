@@ -197,6 +197,15 @@ function shoppingItems(cfg) {
 
         save(it, data) { this.call('/shopping/items/' + it.id, data); },
 
+        /** Zahl für Eingabefelder: 0.5 → "0,5" */
+        num(n) { return n === null || n === undefined || n === '' ? '' : String(+n).replace('.', ','); },
+
+        /** Faktor/Verbrauchsdauer eines zugeordneten Produkts speichern (das jeweils andere Feld bleibt) */
+        saveLink(it, p, data) {
+            const body = Object.assign({ factor: this.num(p.factor), shelf_days: p.shelf_days ?? '' }, data);
+            this.call('/shopping/items/' + it.id + '/products/' + p.id, body);
+        },
+
         async link(it, p) {
             if (await this.call('/shopping/items/' + it.id + '/products', { product_id: p.id })) this.pq = '';
         },

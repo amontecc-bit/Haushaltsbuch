@@ -13,13 +13,14 @@ Kassenbons fotografieren, Auswertungen ansehen und planen, wie sich die Kontost�
 4. [Buchungen suchen und bearbeiten](#4-buchungen-suchen-und-bearbeiten)
 5. [Kontoauszug importieren (CSV)](#5-kontoauszug-importieren-csv)
 6. [Einkäufe, Kassenbons und Einkaufsliste](#6-einkäufe-kassenbons-und-einkaufsliste)
-7. [Fixkosten und Daueraufträge](#7-fixkosten-und-daueraufträge)
-8. [Kategorien und Regeln](#8-kategorien-und-regeln)
-9. [Auswertungen](#9-auswertungen)
-10. [Prognose](#10-prognose)
-11. [Kredite](#11-kredite)
-12. [Für Administratoren: Konten, Familie, Einstellungen](#12-für-administratoren-konten-familie-einstellungen)
-13. [Häufige Fragen](#13-häufige-fragen)
+7. [Vorrat und Rezepte](#7-vorrat-und-rezepte)
+8. [Fixkosten und Daueraufträge](#8-fixkosten-und-daueraufträge)
+9. [Kategorien und Regeln](#9-kategorien-und-regeln)
+10. [Auswertungen](#10-auswertungen)
+11. [Prognose](#11-prognose)
+12. [Kredite](#12-kredite)
+13. [Für Administratoren: Konten, Familie, Einstellungen](#13-für-administratoren-konten-familie-einstellungen)
+14. [Häufige Fragen](#14-häufige-fragen)
 
 ---
 
@@ -97,7 +98,7 @@ Fast alles ist anklickbar: Ein Konto führt zu seinen Buchungen, „Auswertung�
   Gegenbuchung schon auf dem anderen Konto (z. B. aus dessen Kontoauszug), wird diese übernommen statt doppelt angelegt.
 - **Weitere Angaben** öffnet Felder für Verwendungszweck und Notiz.
 - **Wiederholen (Dauerauftrag / Fixkosten)**: Ist der Schalter an, wird aus der Buchung gleich eine wiederkehrende Buchung
-  (siehe [Fixkosten](#7-fixkosten-und-daueraufträge)).
+  (siehe [Fixkosten](#8-fixkosten-und-daueraufträge)).
 
 ---
 
@@ -218,7 +219,7 @@ Die Kategorie jedes Artikels merkt sich das Haushaltsbuch. Beim nächsten Einkau
 Unter **Einkaufsliste** (am Handy über **Mehr** oder auf der Seite **Einkäufe**) legst du Listen an, z. B.
 „Wocheneinkauf“. Ins Suchfeld tippst du, was du brauchst: Vorgeschlagen werden Posten, die schon einmal auf einer
 Liste standen, und Artikel aus deinen bisherigen Einkäufen mit Preisspanne. Gibt es etwas noch nicht, fügst du es
-als neuen Posten hinzu. Menge und Einheit (Stück, kg, g, l, Pck.) stellst du vor dem Hinzufügen ein. Steht ein
+als neuen Posten hinzu. Menge und Einheit (Stück, kg, g, l, ml, Pck.) stellst du vor dem Hinzufügen ein. Steht ein
 Posten schon auf der Liste, wird die Menge erhöht.
 
 ![Posten suchen](anleitung/einkaufsliste-suche.png)
@@ -282,7 +283,111 @@ stehen oben.
 
 ---
 
-## 7. Fixkosten und Daueraufträge
+## 7. Vorrat und Rezepte
+
+Das Haushaltsbuch kann mitzählen, was zu Hause ist. Es schlägt Rezepte vor, die du damit kochen kannst, und setzt
+Fehlendes auf die Einkaufsliste. Grundlage sind die [virtuellen Posten](#virtuelle-posten-dasselbe-produkt-aus-verschiedenen-läden)
+der Einkaufsliste, z. B. „Milch“ oder „Mehl“.
+
+### Vorrat einrichten
+
+Öffne unter **Einkaufsliste → Virtuelle Posten** einen Posten. Im Bereich **Vorrat** stellst du ein:
+
+- **Referenzmenge**: die Menge, in der der Vorrat gezählt wird, z. B. 1 l bei Milch, 1 kg bei Mehl oder 1 Stück bei Eiern.
+- **Verbrauchsdauer (Tage)**: wie lange es normalerweise dauert, bis der Posten verbraucht oder abgelaufen ist.
+  Leer heißt, er läuft nicht ab, z. B. Nudeln oder Mineralwasser.
+- **Mindestbestand**: ab wann nachgekauft werden soll, in Vielfachen der Referenzmenge. 0 heißt erst, wenn nichts
+  mehr da ist.
+- **automatisch nachkaufen**: ob der Posten auf die automatische Einkaufsliste kommt.
+- **Grundvorrat (immer da)**: für Salz, Pfeffer oder Öl. Er gilt in Rezepten immer als vorhanden und wird nicht gezählt.
+
+Bei den **zugeordneten Produkten** steht je Artikel ein **Faktor** zur Referenzmenge. Eine 0,5-l-Packung Milch hat
+bei 1 l Referenz den Faktor 0,5, ein Sixpack „Mineralwasser 6x1,5L“ bei 1,5 l Referenz den Faktor 6. Steht die
+Packungsgröße im Namen, schlägt das Haushaltsbuch den Faktor vor. Ein Klick auf **Vorschlag** übernimmt ihn. Daneben
+kannst du für einen Artikel eine eigene **Verbrauchsdauer** eintragen, z. B. H-Milch 30 Tage statt 7.
+
+![Vorrat beim virtuellen Posten einstellen](anleitung/virtuelle-posten.png)
+
+### Der Vorrat
+
+Unter **Vorrat** siehst du je Posten den Bestand und seinen Zustand:
+
+| Zustand | Bedeutung |
+|---|---|
+| **vorrätig** | Es ist genug da. |
+| **knapp** | Der Bestand liegt auf oder unter dem Mindestbestand. |
+| **aufgebraucht** | Es ist nichts mehr da: verbraucht, gekocht oder von Hand auf 0 gesetzt. |
+| **abgelaufen** | Die letzte Packung hat ihre Verbrauchsdauer überschritten. |
+| **Grundvorrat** | Der Posten ist immer da und wird nicht gezählt. |
+
+![Vorrat](anleitung/vorrat.png)
+
+So ändert sich der Vorrat:
+
+- **Einkauf:** Jeder gespeicherte Einkauf erhöht den Vorrat der zugeordneten Posten, z. B. 2 × „Milch 0,5l“ um 1 l.
+  Jeder Kauf ist eine eigene **Charge** mit Ablaufdatum (Kaufdatum + Verbrauchsdauer). Bearbeitest du einen Einkauf
+  später, wird nichts doppelt gezählt.
+- **Ablauf:** Nach der Verbrauchsdauer zählt eine Charge als verbraucht.
+- **Kochen:** **Gekocht** bei einem Rezept bucht die Zutaten ab. Dabei wird zuerst die Charge verbraucht, die als
+  Nächstes abläuft.
+- **Von Hand:** Ein Tipp auf den Posten öffnet **− / +** (je eine Referenzmenge), **Setzen** für einen genauen
+  Bestand und **Alles verbraucht**. In der Liste der Chargen lassen sich Restmenge und Ablaufdatum ändern, z. B.
+  wenn der Joghurt länger hält.
+
+Am Anfang ist der Vorrat leer. **Aus Einkäufen abgleichen** übernimmt die Einkäufe der letzten 90 Tage. Ältere Chargen
+sind dann meist schon abgelaufen. Danach lohnt ein kurzer Blick, ob die Bestände stimmen.
+
+<img src="anleitung/vorrat-mobil.png" alt="Vorrat auf dem Handy" width="260">
+
+### Automatische Einkaufsliste
+
+Ist ein Posten aufgebraucht, abgelaufen oder knapp, setzt das Haushaltsbuch ihn auf die Liste **Automatisch**. Die
+Notiz zeigt den Grund, z. B. „abgelaufen am 29.09.“. Die Menge ist eine Referenzmenge oder so viel, wie bis zum
+Mindestbestand fehlt. Speicherst du den Einkauf, wird der Posten wie auf jeder Liste abgehakt. Füllst du den Vorrat
+von Hand auf, verschwindet er wieder. Hakst du ihn von Hand ab, kommt er erst wieder auf die Liste, wenn er erneut
+ausgeht. Die Prüfung läuft beim ersten Aufruf am Tag sowie nach jedem Einkauf, Kochen und jeder Korrektur.
+
+![Automatische Einkaufsliste](anleitung/einkaufsliste-auto.png)
+
+### Rezepte
+
+Unter **Rezepte** legst du mit **Neues Rezept** ein Rezept an:
+
+- **Name** und **Portionen**: für wie viele Personen die Mengen gedacht sind.
+- **Klassifikation**: z. B. Mahlzeit *morgens / mittags / abends*. Ein Rezept kann mehrere Werte haben. Eigene Gruppen
+  wie *Art: vegetarisch / mit Fleisch* legst du unter **Klassifikation** an.
+- **Zutaten**: je Zeile ein virtueller Posten mit Menge und Einheit, optional eine Notiz („gehackt“, „1 Prise“). Beim
+  Tippen erscheinen die vorhandenen Posten. Ein neuer Name wird als virtueller Posten angelegt. Die Einheit muss zur
+  Referenz passen: Bei Mehl (1 kg) gehen g und kg, bei Eiern (Stück) nur Stück.
+- **Zubereitung**: freier Text.
+
+![Rezept bearbeiten](anleitung/rezept-bearbeiten.png)
+
+In der Ansicht eines Rezepts rechnest du die Mengen auf eine andere **Portionenzahl** um. Die Zutatenliste zeigt
+dabei, was vorhanden ist und was fehlt. **Gekocht – vom Vorrat abbuchen** zieht die Zutaten für die gewählten
+Portionen ab. **Fehlendes auf Liste** setzt die fehlenden Zutaten auf eine Einkaufsliste deiner Wahl, aufgerundet
+auf ganze Referenzmengen, z. B. eine Packung Butter.
+
+![Rezept](anleitung/rezept.png)
+
+### Rezeptvorschläge
+
+**Rezeptvorschläge** zeigt zuerst alle Rezepte, die mit dem aktuellen Vorrat **vollständig machbar** sind. Mit
+**Weitere Vorschläge** kommen jeweils zehn weitere dazu, sortiert nach den wenigsten fehlenden Zutaten. Jede Karte
+zeigt, wie viele Zutaten fehlen („fehlt 1 von 5“). Der Balken zeigt, wie viel der Vorrat schon abdeckt. Ein Tipp auf
+das Rezept klappt die Zutaten mit *benötigt / vorhanden / fehlt* auf. Mit **Fehlendes auf Einkaufsliste** landen die
+fehlenden Zutaten auf der oben gewählten Liste.
+
+Oben filterst du nach Klassifikation, z. B. nur *abends* und *vegetarisch*. Innerhalb einer Gruppe reicht einer der
+gewählten Werte. Mit **Portionen** rechnest du alle Vorschläge auf eine Personenzahl um.
+
+![Rezeptvorschläge](anleitung/rezeptvorschlaege.png)
+
+<img src="anleitung/rezeptvorschlaege-mobil.png" alt="Rezeptvorschläge auf dem Handy" width="260">
+
+---
+
+## 8. Fixkosten und Daueraufträge
 
 Unter **Fixkosten** stehen alle regelmäßigen Zahlungen: Miete, Strom, Versicherungen, Abos, Gehalt, Kindergeld,
 Sparraten usw.
@@ -310,7 +415,7 @@ zuweisen). Buchungen, die zu Fixkosten gehören, sind in der Buchungsliste geken
 
 ---
 
-## 8. Kategorien und Regeln
+## 9. Kategorien und Regeln
 
 ### Kategorien
 
@@ -321,7 +426,7 @@ anlegen (**+** neben einer Hauptkategorie für eine Unterkategorie) und löschen
 ![Kategorien](anleitung/kategorien.png)
 
 Beim Bearbeiten einer Kategorie gibt es die Option **„In der Prognose ausklammern“**. Sie ist für Einmaliges gedacht,
-etwa eine neue Waschmaschine oder den Urlaub, das die Prognose sonst verzerren würde (siehe [Prognose](#10-prognose)).
+etwa eine neue Waschmaschine oder den Urlaub, das die Prognose sonst verzerren würde (siehe [Prognose](#11-prognose)).
 
 ### Wie Kategorien automatisch vergeben werden
 
@@ -343,7 +448,7 @@ ordnet mit den Regeln nachträglich alle noch offenen Buchungen zu.
 
 ---
 
-## 9. Auswertungen
+## 10. Auswertungen
 
 Unter **Auswertungen** siehst du, wofür das Geld ausgegeben wird.
 
@@ -378,7 +483,7 @@ Kategorie für künftige Einkäufe.
 
 ---
 
-## 10. Prognose
+## 11. Prognose
 
 Die **Prognose** zeigt, wie sich die Kontostände in den nächsten 3 bis 36 Monaten voraussichtlich entwickeln.
 
@@ -396,7 +501,7 @@ warnt die Prognose mit einem roten Hinweis. Über das Auswahlfeld rechts oben ka
 Unter **Annahmen je Konto** steht, welcher Durchschnitt verwendet wird. Ein Klick darauf zeigt die Aufschlüsselung.
 
 > Verzerrt eine einmalige große Ausgabe den Durchschnitt, die Kategorie unter **Kategorien** mit
-> „In der Prognose ausklammern“ markieren. Kreditraten zählen nur mit, wenn sie als Fixkosten angelegt sind (siehe [Kredite](#11-kredite)).
+> „In der Prognose ausklammern“ markieren. Kreditraten zählen nur mit, wenn sie als Fixkosten angelegt sind (siehe [Kredite](#12-kredite)).
 
 ### Szenarien: „Was wäre, wenn …?“
 
@@ -408,7 +513,7 @@ Wählst du das Szenario aus, läuft der berechnete Durchschnitt als gestrichelte
 
 ---
 
-## 11. Kredite
+## 12. Kredite
 
 Unter **Kredite** verwaltest du Darlehen (Annuitäten- oder Tilgungsdarlehen) mit Zinssatz, Rate, Auszahlung und
 erster Rate.
@@ -424,7 +529,7 @@ erster Rate.
 
 ---
 
-## 12. Für Administratoren: Konten, Familie, Einstellungen
+## 13. Für Administratoren: Konten, Familie, Einstellungen
 
 ### Ersteinrichtung
 
@@ -468,7 +573,7 @@ Unter **Familie** legst du weitere Personen an (Name, E-Mail als Anmeldename, Pa
 
 ---
 
-## 13. Häufige Fragen
+## 14. Häufige Fragen
 
 **Muss ich Fixkosten jeden Monat selbst buchen?**
 Nein. Fällige Fixkosten mit „Automatisch buchen“ werden beim ersten Öffnen des Haushaltsbuchs am Tag selbst gebucht.
@@ -491,6 +596,11 @@ Einfach die richtige Kategorie wählen. Das Haushaltsbuch lernt daraus. Für fes
 **Die Prognose wirkt zu hoch oder zu niedrig.**
 Unter **Annahmen je Konto** prüfen, welcher Durchschnitt verwendet wird. Einmalige Ausgaben über ihre Kategorie
 ausklammern, fehlende Fixkosten anlegen oder ein Szenario mit eigenen Werten nutzen.
+
+**Der Vorrat stimmt nicht mit dem Kühlschrank überein.**
+Das ist normal, denn Verbrauch außerhalb von Rezepten sieht das Haushaltsbuch nur über die Verbrauchsdauer. Unter
+**Vorrat** den Bestand mit **Setzen** korrigieren und bei häufigen Abweichungen die Verbrauchsdauer des Postens oder
+Artikels anpassen.
 
 **Kann ich auch den dunklen Modus nutzen?**
 Ja, über das Symbol ◐ (am Computer unten links, am Handy oben rechts).

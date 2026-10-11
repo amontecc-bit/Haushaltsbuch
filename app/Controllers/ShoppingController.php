@@ -11,7 +11,7 @@ use App\Repositories\CategoryRepository;
 use App\Repositories\ProductRepository;
 use App\Repositories\PurchaseRepository;
 use App\Repositories\ShoppingRepository;
-use App\Services\CategorizationService;
+use App\Services\InventoryService;
 use App\Services\ShoppingListService;
 
 /**
@@ -145,6 +145,9 @@ final class ShoppingController extends Controller
         $p = (new PurchaseRepository())->find((int) $this->request->int('purchase_id'), $this->hid, Auth::accountIds('view'))
             ?? $this->json(['error' => 'Einkauf nicht gefunden.'], 404);
         $n = ShoppingListService::matchPurchase($this->hid, (int) $p['id'], $p['purchase_date'], $id);
+        if ($n) {
+            InventoryService::syncPurchase($this->hid, (int) $p['id']); // evtl. neu gelernte Zuordnungen
+        }
         $this->json([
             'ok' => true, 'matched' => $n, 'entries' => $this->entries($id), 'items' => $this->itemPicker(),
             'message' => $n ? "$n Posten als gekauft abgehakt." : 'Kein Posten der Liste in diesem Einkauf gefunden.',
@@ -160,7 +163,8 @@ final class ShoppingController extends Controller
             'title'      => 'Virtuelle Posten',
             'back'       => $list ? "/shopping/{$list['id']}" : '/shopping',
             'actions'    => $this->listButton($list)
-                . '<a class="btn btn-outline-primary" href="' . e(url('/shopping/assign')) . '"><i class="bi bi-diagram-3"></i> Zuordnung</a>',
+                . '<a class="btn btn-outline-primary" href="' . e(url('/shopping/assign')) . '"><i class="bi bi-diagram-3"></i> Zuordnung</a>'
+                . '<a class="btn btn-outline-primary" href="' . e(url('/inventory')) . '"><i class="bi bi-box-seam"></i> Vorrat</a>',
             'openId'     => (int) $this->request->int('open', 0),
             'items'      => $this->itemsPayload(),
             'catalog'    => $this->catalog(),
@@ -202,14 +206,15 @@ final class ShoppingController extends Controller
         } elseif ($r->int('to_item_id')) {
             $to = $repo->findItem((int) $r->int('to_item_id'), $this->hid) ?? $this->json(['error' => 'Virtueller Posten nicht gefunden.'], 404);
         }
-        $repo->transaction(function () use ($repo, $pid, $from, $to) {
+        $repo->transaction(function () use ($repo, $pid, $from, $to, $product) {
             if ($from && (!$to || (int) $from['id'] !== (int) $to['id'])) {
                 $repo->unlinkProduct((int) $from['id'], $pid);
             }
             if ($to) {
-                $repo->linkProduct((int) $to['id'], $pid);
+                $repo->linkProduct((int) $to['id'], $pid, self::guess($to, $product['name']));
             }
         });
+        $this->resyncProduct($pid);
         $this->json(['ok' => true, 'items' => $this->itemsPayload(), 'catalog' => $this->catalog()]);
     }
 
@@ -230,7 +235,7 @@ final class ShoppingController extends Controller
         $data = [];
         $name = mb_substr($this->request->str('name'), 0, 190);
         if ($name !== '') {
-            $norm = self::normalize($name);
+            $norm = ShoppingListService::normalize($name);
             $other = $repo->findItemByNormalized($this->hid, $norm);
             if ($other && (int) $other['id'] !== $itemId) {
                 $this->json(['error' => "Den Posten „{$other['name']}“ gibt es schon."], 422);
@@ -240,8 +245,15 @@ final class ShoppingController extends Controller
         if ($this->request->input('category_id') !== null) {
             $data['category_id'] = (new CategoryRepository())->validId($this->request->int('category_id'), $this->hid);
         }
+        $data += $this->stockSettings();
         if ($data) {
             $repo->updateItem($itemId, $this->hid, $data);
+        }
+        if (array_key_exists('ref_quantity', $data) || array_key_exists('ref_unit', $data) || array_key_exists('shelf_days', $data)) {
+            InventoryService::rebuild($this->hid); // Mengen/Ablauf der Chargen neu berechnen
+        }
+        if ($data) {
+            InventoryService::refreshAutoList($this->hid);
         }
         $this->json(['ok' => true, 'items' => $this->itemsPayload()]);
     }
@@ -255,10 +267,11 @@ final class ShoppingController extends Controller
     public function linkProduct(int $itemId): void
     {
         $repo = new ShoppingRepository();
-        $repo->findItem($itemId, $this->hid) ?? $this->json(['error' => 'Nicht gefunden'], 404);
+        $item = $repo->findItem($itemId, $this->hid) ?? $this->json(['error' => 'Nicht gefunden'], 404);
         $product = (new ProductRepository())->find((int) $this->request->int('product_id'), $this->hid)
             ?? $this->json(['error' => 'Produkt nicht gefunden.'], 404);
-        $repo->linkProduct($itemId, (int) $product['id']);
+        $repo->linkProduct($itemId, (int) $product['id'], self::guess($item, $product['name']));
+        $this->resyncProduct((int) $product['id']);
         $this->json(['ok' => true, 'items' => $this->itemsPayload()]);
     }
 
@@ -267,6 +280,21 @@ final class ShoppingController extends Controller
         $repo = new ShoppingRepository();
         $repo->findItem($itemId, $this->hid) ?? $this->json(['error' => 'Nicht gefunden'], 404);
         $repo->unlinkProduct($itemId, $productId);
+        $this->resyncProduct($productId);
+        $this->json(['ok' => true, 'items' => $this->itemsPayload()]);
+    }
+
+    /** AJAX: Ausgleichsfaktor und Verbrauchsdauer eines zugeordneten Produkts */
+    public function updateLink(int $itemId, int $productId): void
+    {
+        $repo = new ShoppingRepository();
+        $repo->findItem($itemId, $this->hid) ?? $this->json(['error' => 'Nicht gefunden'], 404);
+        $factor = (float) str_replace(',', '.', $this->request->str('factor', '1'));
+        if ($factor <= 0 || $factor > 99999) {
+            $this->json(['error' => 'Bitte einen Faktor größer als 0 eingeben.'], 422);
+        }
+        $repo->updateLink($itemId, $productId, round($factor, 4), self::days($this->request->str('shelf_days')));
+        $this->resyncProduct($productId);
         $this->json(['ok' => true, 'items' => $this->itemsPayload()]);
     }
 
@@ -371,7 +399,12 @@ final class ShoppingController extends Controller
         return array_map(fn ($i) => [
             'id' => (int) $i['id'], 'name' => $i['name'], 'category_id' => $i['category_id'] ? (int) $i['category_id'] : '',
             'color' => $i['category_color'] ?: '#adb5bd', 'icon' => $i['category_icon'] ?: 'basket',
-            'products' => $products[(int) $i['id']] ?? [],
+            'ref_quantity' => (float) $i['ref_quantity'], 'ref_unit' => (string) $i['ref_unit'],
+            'shelf_days' => $i['shelf_days'] !== null ? (int) $i['shelf_days'] : '', 'min_stock' => (float) $i['min_stock'],
+            'staple' => (bool) $i['staple'], 'auto_restock' => (bool) $i['auto_restock'],
+            'products' => array_map(fn ($p) => $p + [
+                'guess' => InventoryService::guessFactor($p['name'], (float) $i['ref_quantity'], $i['ref_unit']),
+            ], $products[(int) $i['id']] ?? []),
             'min' => isset($stats[(int) $i['id']]) ? (float) $stats[(int) $i['id']]['min'] : null,
             'max' => isset($stats[(int) $i['id']]) ? (float) $stats[(int) $i['id']]['max'] : null,
             'price_unit' => $stats[(int) $i['id']]['unit'] ?? null,
@@ -404,32 +437,57 @@ final class ShoppingController extends Controller
         return $name !== '' ? $this->itemByName($name) : null;
     }
 
-    /**
-     * Virtuellen Posten mit gleichem normalisierten Namen holen oder anlegen. Neue Posten bekommen eine
-     * Kategorie (Vorschlag) und das gleichnamige Produkt aus den Einkäufen, falls vorhanden.
-     */
     private function itemByName(string $name, ?int $categoryId = null): int
     {
-        $repo = new ShoppingRepository();
-        $norm = self::normalize($name);
-        $item = $repo->findItemByNormalized($this->hid, mb_substr($norm, 0, 190));
-        if ($item) {
-            return (int) $item['id'];
-        }
-        $name = mb_strtoupper(mb_substr($name, 0, 1)) . mb_substr($name, 1); // „bananen“ → „Bananen“
-        $categoryId ??= (new CategorizationService($this->hid))->suggestForItem($name)['category_id'];
-        $id = $repo->createItem($this->hid, $name, $norm, $categoryId);
-        $product = (new ProductRepository())->indexByNormalized($this->hid)[CategorizationService::normalizeProduct($name)] ?? null;
-        if ($product) {
-            $repo->linkProduct($id, (int) $product['id']);
-        }
-        return $id;
+        return ShoppingListService::itemByName($this->hid, $name, $categoryId);
     }
 
-    /** Vergleichsschlüssel für virtuelle Posten (wie bei Produkten, notfalls nur kleingeschrieben) */
-    private static function normalize(string $name): string
+    /** Nach geänderter Zuordnung: Vorrat aus den letzten Einkäufen mit diesem Produkt neu berechnen */
+    private function resyncProduct(int $productId): void
     {
-        return CategorizationService::normalizeProduct($name) ?: mb_strtolower(trim($name));
+        InventoryService::rebuild($this->hid, 90, $productId);
+        InventoryService::refreshAutoList($this->hid);
+    }
+
+    /**
+     * Vorrats-Einstellungen eines virtuellen Postens aus der Anfrage (nur übergebene Felder):
+     * Referenzmenge/-einheit, Verbrauchsdauer, Mindestbestand, Grundvorrat, automatisch nachkaufen.
+     */
+    private function stockSettings(): array
+    {
+        $r = $this->request;
+        $data = [];
+        if ($r->input('ref_quantity') !== null) {
+            $q = (float) str_replace(',', '.', $r->str('ref_quantity'));
+            $data['ref_quantity'] = $q > 0 ? min(round($q, 3), 99999) : 1;
+        }
+        if ($r->input('ref_unit') !== null) {
+            $data['ref_unit'] = InventoryService::unit($r->str('ref_unit'));
+        }
+        if ($r->input('shelf_days') !== null) {
+            $data['shelf_days'] = self::days($r->str('shelf_days'));
+        }
+        if ($r->input('min_stock') !== null) {
+            $data['min_stock'] = max(0, min(round((float) str_replace(',', '.', $r->str('min_stock')), 3), 9999));
+        }
+        foreach (['staple', 'auto_restock'] as $k) {
+            if ($r->input($k) !== null) {
+                $data[$k] = $r->bool($k) ? 1 : 0;
+            }
+        }
+        return $data;
+    }
+
+    /** Ausgleichsfaktor aus dem Produktnamen (z. B. „0,5l“ bei Referenz 1 l) */
+    private static function guess(array $item, string $productName): ?float
+    {
+        return InventoryService::guessFactor($productName, (float) $item['ref_quantity'], $item['ref_unit']);
+    }
+
+    /** Verbrauchsdauer in Tagen (leer = läuft nicht ab) */
+    private static function days(string $v): ?int
+    {
+        return $v !== '' && is_numeric($v) && (int) $v > 0 ? min((int) $v, 3650) : null;
     }
 
     /** @return array{0:float, 1:?string} Menge, Einheit */
