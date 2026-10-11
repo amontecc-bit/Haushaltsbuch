@@ -47,6 +47,13 @@ final class Auth
         self::$user = null;
     }
 
+    /** Ohne Sitzung als dieser Benutzer handeln (MCP-Anfragen mit Bearer-Token) */
+    public static function actAs(array $user): void
+    {
+        self::$user = $user;
+        self::$accountCache = [];
+    }
+
     public static function logout(): void
     {
         Session::destroy();

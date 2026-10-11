@@ -69,6 +69,17 @@
             <div class="card-footer"><button class="btn btn-outline-primary">Passwort ändern</button></div>
         </form>
 
+        <a class="card mb-3 text-decoration-none" href="<?= e(url('/settings/claude')) ?>">
+            <div class="card-body d-flex gap-2 align-items-center">
+                <i class="bi bi-stars fs-3 text-primary"></i>
+                <div class="flex-grow-1">
+                    <div class="fw-semibold">Claude (MCP)</div>
+                    <div class="small text-body-secondary">Einkaufsliste, Vorrat, Rezepte und Bargeld per Claude-App</div>
+                </div>
+                <i class="bi bi-chevron-right"></i>
+            </div>
+        </a>
+
         <div class="card">
             <div class="card-body d-flex gap-2 align-items-center">
                 <i class="bi bi-person-circle fs-3"></i>

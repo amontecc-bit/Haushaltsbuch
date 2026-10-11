@@ -1,6 +1,12 @@
 # Alles nach public/ umleiten (für XAMPP bzw. Hoster ohne eigenen DocumentRoot)
 Options -Indexes
+# Authorization-Header (Bearer-Token für Claude/MCP) an PHP weiterreichen – bei CGI/FastCGI (z. B. IONOS) fehlt er sonst
+<IfModule mod_setenvif.c>
+    SetEnvIf Authorization "(.+)" HTTP_AUTHORIZATION=$1
+</IfModule>
 RewriteEngine On
+RewriteCond %{HTTP:Authorization} .
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
 RewriteRule ^(\.env|composer\.(json|lock))$ - [F,L]
 RewriteCond %{REQUEST_URI} !/public/
 RewriteRule ^(.*)$ public/$1 [L,QSA]

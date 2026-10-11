@@ -58,4 +58,23 @@ final class ProductRepository extends Repository
             [$householdId]
         );
     }
+
+    /**
+     * Produkte ohne Preise und Geschäfte (für Claude): wie oft und wann zuletzt gekauft (nur sichtbare Einkäufe).
+     * Enthalten sind Produkte aus sichtbaren Einkäufen und solche, die einem virtuellen Posten zugeordnet sind.
+     */
+    public function overview(int $householdId, array $accountIds): array
+    {
+        return $this->many(
+            'SELECT pr.id, pr.name, COUNT(p.id) AS bought, MAX(p.purchase_date) AS last_bought
+             FROM products pr
+             LEFT JOIN purchase_items i ON i.product_id = pr.id
+             LEFT JOIN purchases p ON p.id = i.purchase_id AND (p.account_id IS NULL OR p.account_id IN (' . self::in($accountIds) . '))
+             WHERE pr.household_id = ?
+             GROUP BY pr.id
+             HAVING COUNT(p.id) > 0 OR EXISTS (SELECT 1 FROM shopping_item_products sip WHERE sip.product_id = pr.id)
+             ORDER BY bought DESC, pr.name',
+            [...$accountIds, $householdId]
+        );
+    }
 }

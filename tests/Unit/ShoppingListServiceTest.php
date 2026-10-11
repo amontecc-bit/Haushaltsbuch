@@ -58,4 +58,14 @@ final class ShoppingListServiceTest extends TestCase
         self::assertSame('10 Pck.', ShoppingListService::quantityLabel('10.000', 'Pck'));
         self::assertSame('250 g', ShoppingListService::quantityLabel(250, 'g'));
     }
+
+    public function testMergeFactorConvertsBetweenReferences(): void
+    {
+        $item = fn (float $q, ?string $u) => ['ref_quantity' => $q, 'ref_unit' => $u];
+        $this->assertSame(2.0, ShoppingListService::mergeFactor($item(1, 'l'), $item(0.5, 'l')));
+        $this->assertSame(0.25, ShoppingListService::mergeFactor($item(250, 'g'), $item(1, 'kg')));
+        $this->assertSame(6.0, ShoppingListService::mergeFactor($item(6, null), $item(1, null)));
+        $this->assertNull(ShoppingListService::mergeFactor($item(1, 'l'), $item(1, 'kg')));
+        $this->assertNull(ShoppingListService::mergeFactor($item(1, null), $item(1, 'kg')));
+    }
 }

@@ -13,6 +13,7 @@ final class SettingsRepository extends Repository
         'forecast_months'    => '12',
         'forecast_avg_months' => '6',
         'household_name'     => '',
+        'mcp_enabled'        => '0',       // Claude-Zugriff (MCP-Server) für den Haushalt
     ];
 
     public function all(int $householdId): array

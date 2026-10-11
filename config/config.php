@@ -13,6 +13,7 @@ return [
         'env'      => $env('APP_ENV', 'production'),
         'debug'    => filter_var($env('APP_DEBUG', false), FILTER_VALIDATE_BOOL),
         'base_url' => $env('APP_BASE_URL', ''),
+        'url'      => $env('APP_URL', ''),
         'timezone' => 'Europe/Berlin',
     ],
     'db' => [
@@ -31,6 +32,10 @@ return [
     'ai' => [
         'api_key' => $env('ANTHROPIC_API_KEY', ''),
         'model'   => $env('ANTHROPIC_MODEL', 'claude-haiku-4-5-20251001'),
+    ],
+    'mcp' => [
+        // Erlaubte Hosts für OAuth-Rückruf-Adressen (kommagetrennt), leer = claude.ai, claude.com
+        'redirect_hosts' => $env('MCP_REDIRECT_HOSTS', ''),
     ],
     'upload_max_bytes' => 15 * 1024 * 1024,
 ];

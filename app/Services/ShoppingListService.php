@@ -106,6 +106,31 @@ final class ShoppingListService
         return $id;
     }
 
+    /**
+     * Doppelte virtuelle Posten zusammenführen: $source geht in $target auf (Produkte, Listeneinträge, Rezeptzutaten,
+     * Vorrat mit umgerechneten Mengen) und wird gelöscht.
+     * @throws \DomainException wenn die Referenzen nicht zueinander passen (z. B. Liter und Kilogramm)
+     */
+    public static function mergeItems(int $householdId, array $source, array $target): void
+    {
+        if ((int) $source['id'] === (int) $target['id']) {
+            throw new \DomainException('Quelle und Ziel sind derselbe Posten.');
+        }
+        $f = self::mergeFactor($source, $target)
+            ?? throw new \DomainException("„{$source['name']}“ (" . InventoryService::label(1, (float) $source['ref_quantity'], $source['ref_unit'])
+                . ") und „{$target['name']}“ (" . InventoryService::label(1, (float) $target['ref_quantity'], $target['ref_unit'])
+                . ') haben Referenzen in verschiedenen Größen – zuerst die Referenz angleichen.');
+        (new ShoppingRepository())->mergeItem($householdId, (int) $source['id'], (int) $target['id'], $f);
+        InventoryService::refreshAutoList($householdId);
+    }
+
+    /** Referenzmengen des Ziels je Referenzmenge der Quelle (1 l → Referenz 0,5 l = 2), null bei Gewicht ↔ Volumen ↔ Stück */
+    public static function mergeFactor(array $source, array $target): ?float
+    {
+        return InventoryService::toRef((float) $source['ref_quantity'], $source['ref_unit'] ?? null,
+            (float) $target['ref_quantity'], $target['ref_unit'] ?? null);
+    }
+
     /** Vergleichsschlüssel für virtuelle Posten (wie bei Produkten, notfalls nur kleingeschrieben) */
     public static function normalize(string $name): string
     {

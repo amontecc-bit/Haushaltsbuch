@@ -295,6 +295,72 @@ final class ShoppingRepository extends Repository
         return $out;
     }
 
+    /** IDs der virtuellen Posten, denen ein Produkt zugeordnet ist */
+    public function itemIdsForProduct(int $householdId, int $productId): array
+    {
+        return array_map('intval', array_column($this->many(
+            'SELECT s.id FROM shopping_items s JOIN shopping_item_products sip ON sip.shopping_item_id = s.id
+             WHERE s.household_id = ? AND sip.product_id = ? ORDER BY s.id',
+            [$householdId, $productId]
+        ), 'id'));
+    }
+
+    /** @return array<int, string[]> Posten-ID => Namen der Rezepte, in denen er als Zutat vorkommt */
+    public function recipeUsage(int $householdId): array
+    {
+        $out = [];
+        foreach ($this->many(
+            'SELECT DISTINCT i.shopping_item_id, r.name FROM recipe_ingredients i JOIN recipes r ON r.id = i.recipe_id
+             WHERE r.household_id = ? ORDER BY r.name',
+            [$householdId]
+        ) as $r) {
+            $out[(int) $r['shopping_item_id']][] = $r['name'];
+        }
+        return $out;
+    }
+
+    /**
+     * Posten $src in $tgt aufgehen lassen und löschen: Produkt-Zuordnungen, Listeneinträge, Rezeptzutaten und
+     * Vorrats-Chargen ziehen um. $f = Referenzmengen von $tgt je Referenzmenge von $src (Mengen/Faktoren umrechnen).
+     * Steht der Posten auf einer Liste schon als $tgt, wird die Menge bei gleicher Einheit addiert.
+     */
+    public function mergeItem(int $householdId, int $src, int $tgt, float $f): void
+    {
+        $this->transaction(function () use ($householdId, $src, $tgt, $f) {
+            $have = array_column($this->productsByItem($householdId, [$tgt])[$tgt] ?? [], null, 'id');
+            foreach ($this->productsByItem($householdId, [$src])[$src] ?? [] as $p) {
+                if (!isset($have[$p['id']])) {
+                    $this->exec('INSERT INTO shopping_item_products (shopping_item_id, product_id, factor, shelf_days) VALUES (?, ?, ?, ?)',
+                        [$tgt, $p['id'], round($p['factor'] * $f, 4), $p['shelf_days']]);
+                }
+            }
+            $targetEntries = [];
+            foreach ($this->many('SELECT * FROM shopping_list_entries WHERE shopping_item_id = ?', [$tgt]) as $e) {
+                $targetEntries[(int) $e['list_id']] = $e;
+            }
+            foreach ($this->many('SELECT * FROM shopping_list_entries WHERE shopping_item_id = ?', [$src]) as $e) {
+                $t = $targetEntries[(int) $e['list_id']] ?? null;
+                if (!$t) {
+                    $this->exec('UPDATE shopping_list_entries SET shopping_item_id = ? WHERE id = ?', [$tgt, $e['id']]);
+                    continue;
+                }
+                if ($t['done_at'] === null && $e['done_at'] === null && (string) $t['unit'] === (string) $e['unit']) {
+                    $this->exec('UPDATE shopping_list_entries SET quantity = quantity + ? WHERE id = ?', [$e['quantity'], $t['id']]);
+                }
+                $this->exec('DELETE FROM shopping_list_entries WHERE id = ?', [$e['id']]);
+            }
+            $this->exec('UPDATE recipe_ingredients SET shopping_item_id = ? WHERE shopping_item_id = ?', [$tgt, $src]);
+            $this->exec(
+                'UPDATE inventory_lots SET shopping_item_id = ?, quantity = ROUND(quantity * ?, 3), remaining = ROUND(remaining * ?, 3)
+                 WHERE shopping_item_id = ? AND household_id = ?',
+                [$tgt, $f, $f, $src, $householdId]
+            );
+            $this->exec('UPDATE shopping_items t JOIN shopping_items s ON s.id = ? SET t.category_id = COALESCE(t.category_id, s.category_id)
+                         WHERE t.id = ? AND t.household_id = ?', [$src, $tgt, $householdId]);
+            $this->deleteItem($src, $householdId);
+        });
+    }
+
     /** Produkte aus den Einkäufen (Fundus) mit Preisspanne – für die Auswahl beim Hinzufügen */
     public function productCatalog(int $householdId, array $accountIds, int $limit = 3000): array
     {

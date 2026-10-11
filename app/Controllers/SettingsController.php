@@ -7,6 +7,7 @@ namespace App\Controllers;
 use App\Core\Auth;
 use App\Core\Config;
 use App\Repositories\HouseholdRepository;
+use App\Repositories\OAuthRepository;
 use App\Repositories\SettingsRepository;
 use App\Repositories\UserRepository;
 
@@ -61,6 +62,35 @@ final class SettingsController extends Controller
         }
         (new UserRepository())->updatePassword((int) $user['id'], $new);
         $this->redirect('/settings', 'Passwort geändert.');
+    }
+
+    /** Claude (MCP): Zugriff ein-/ausschalten (Admin), verbundene Apps, Protokoll der Änderungen */
+    public function claude(): void
+    {
+        $repo = new OAuthRepository();
+        $this->view('settings/claude', [
+            'title'       => 'Claude (MCP)',
+            'back'        => '/settings',
+            'enabled'     => OAuthController::enabled($this->hid),
+            'isAdmin'     => Auth::isAdmin(),
+            'mcpUrl'      => absolute_url('/mcp'),
+            'connections' => $repo->connections($this->hid, Auth::isAdmin() ? null : Auth::id()),
+            'log'         => $repo->recentLog($this->hid),
+        ]);
+    }
+
+    public function claudeToggle(): void
+    {
+        $on = $this->request->bool('enabled');
+        (new SettingsRepository())->set($this->hid, 'mcp_enabled', $on ? '1' : '0');
+        $this->redirect('/settings/claude', $on ? 'Claude-Zugriff eingeschaltet.' : 'Claude-Zugriff ausgeschaltet – bestehende Verbindungen sind gesperrt.');
+    }
+
+    /** Verbindung trennen (eigene; Admins jede im Haushalt) */
+    public function claudeRevoke(int $id): void
+    {
+        (new OAuthRepository())->revoke($id, $this->hid, Auth::isAdmin() ? null : Auth::id());
+        $this->redirect('/settings/claude', 'Verbindung getrennt.');
     }
 
     /** Übersichtsseite „Mehr“ für die mobile Navigation */

@@ -4,11 +4,8 @@ declare(strict_types=1);
 
 use App\Core\Request;
 use App\Core\Router;
-use App\Core\Session;
 
 require dirname(__DIR__) . '/app/bootstrap.php';
-
-Session::start();
 
 $router = new Router();
 require dirname(__DIR__) . '/app/routes.php';

@@ -302,6 +302,23 @@ foreach ([['payee', 'contains', 'Netflix', 'Streaming & Abos'], ['payee', 'start
         'operator' => $op, 'value' => $value, 'category_id' => $cat($name), 'priority' => 100]);
 }
 $insert('settings', ['household_id' => $hid, 'key' => 'ocr_mode', 'value' => 'local']);
+
+// Claude (MCP): Zugriff an, eine verbundene App (Tokens sind Zufallswerte ohne Gegenstück) und ein paar Protokolleinträge
+$insert('settings', ['household_id' => $hid, 'key' => 'mcp_enabled', 'value' => '1']);
+$cid = $insert('oauth_clients', ['client_id' => 'hb_demo', 'name' => 'Claude', 'redirect_uris' => '["https://claude.ai/api/mcp/auth_callback"]']);
+$insert('oauth_tokens', ['client_id' => $cid, 'user_id' => $anna, 'household_id' => $hid, 'scope' => 'haushalt',
+    'access_hash' => hash('sha256', random_bytes(16)), 'access_expires_at' => date('Y-m-d H:i:s', time() + 3600),
+    'refresh_hash' => hash('sha256', random_bytes(16)), 'refresh_expires_at' => date('Y-m-d H:i:s', time() + 80 * 86400),
+    'created_at' => date('Y-m-d H:i:s', strtotime('-10 days')), 'last_used_at' => date('Y-m-d H:i:s', strtotime('-25 minutes'))]);
+foreach ([
+    [190, 'add_to_shopping_list', 'Auf „Wocheneinkauf“: Milch, Butter, Bananen'],
+    [120, 'cook_recipe', '„Pfannkuchen“ für 4 Portionen vom Vorrat abgebucht.'],
+    [60, 'update_inventory', 'Vorrat Mehl: 0,5 kg → 0 kg'],
+    [25, 'book_cash_expense', 'Gebucht: 4,80 € „Bäcker“ am ' . date('d.m.Y') . ' · Kategorie: Lebensmittel · Konto: Taschengeld Lena'],
+] as [$min, $tool, $summary]) {
+    $insert('mcp_log', ['household_id' => $hid, 'user_id' => $anna, 'client_name' => 'Claude', 'tool' => $tool, 'summary' => $summary,
+        'created_at' => date('Y-m-d H:i:s', strtotime("-$min minutes"))]);
+}
 $db->exec("UPDATE users SET last_login_at = NOW() - INTERVAL id * 17 HOUR");
 
 RecurrenceService::linkExisting($hid, null, $today);
