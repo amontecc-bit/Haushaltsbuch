@@ -11,6 +11,7 @@ use App\Repositories\CategoryRepository;
 use App\Repositories\RecurringRepository;
 use App\Repositories\RuleRepository;
 use App\Repositories\TransactionRepository;
+use App\Repositories\UserPreferenceRepository;
 use App\Repositories\UserRepository;
 use App\Services\CategorizationService;
 use App\Services\RecurrenceService;
@@ -67,9 +68,17 @@ final class TransactionController extends Controller
         if (!$accounts) {
             $this->redirect('/accounts', 'Es gibt noch kein Konto, auf das du buchen darfst.', 'warning');
         }
+        $ids = array_map('intval', array_column($accounts, 'id'));
+        $prefs = new UserPreferenceRepository();
+        $from = $this->request->int('account_id') ?? $prefs->account(Auth::id(), 'account_booking', $ids) ?? $ids[0];
+        $to = $prefs->account(Auth::id(), 'account_transfer', $ids);
+        if ($to === null || $to === $from) {
+            // sonst erstes anderes Konto – Von und Auf sollen nicht gleich vorbelegt sein
+            $to = array_values(array_diff($ids, [$from]))[0] ?? null;
+        }
         $tx = [
-            'id' => null, 'kind' => $type, 'amount' => '', 'account_id' => $this->request->int('account_id') ?? $accounts[0]['id'],
-            'to_account_id' => null, 'category_id' => null, 'booking_date' => date('Y-m-d'), 'payee' => '', 'purpose' => '', 'note' => '',
+            'id' => null, 'kind' => $type, 'amount' => '', 'account_id' => $from,
+            'to_account_id' => $to, 'category_id' => null, 'booking_date' => date('Y-m-d'), 'payee' => '', 'purpose' => '', 'note' => '',
         ];
         $this->renderForm($tx, 'Neue Buchung');
     }

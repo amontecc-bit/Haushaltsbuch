@@ -57,6 +57,29 @@
     </div>
 
     <div class="col-lg-5">
+        <?php if ($bookable): ?>
+            <form method="post" action="<?= e(url('/settings/preferences')) ?>" class="card mb-3">
+                <?= csrf_field() ?>
+                <div class="card-header bg-transparent"><strong>Meine Vorzugskonten</strong></div>
+                <div class="card-body">
+                    <p class="small text-body-secondary">Diese Konten sind bei den folgenden Aktionen vorausgewählt.</p>
+                    <?php foreach ($prefLabels as $key => $label): ?>
+                        <div class="mb-2">
+                            <label class="form-label" for="pref_<?= e($key) ?>"><?= e($label) ?></label>
+                            <select class="form-select" id="pref_<?= e($key) ?>" name="<?= e($key) ?>">
+                                <option value="">– keine Vorgabe –</option>
+                                <?php foreach ($bookable as $a): ?>
+                                    <option value="<?= (int) $a['id'] ?>" <?= selected($a['id'], $prefs[$key] ?? null) ?>><?= e($a['name']) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                    <?php endforeach; ?>
+                    <div class="form-text">Ohne Vorgabe: beim Einkauf das zuletzt benutzte Konto, sonst das erste Konto der Liste.</div>
+                </div>
+                <div class="card-footer"><button class="btn btn-outline-primary">Speichern</button></div>
+            </form>
+        <?php endif; ?>
+
         <form method="post" action="<?= e(url('/settings/password')) ?>" class="card mb-3">
             <?= csrf_field() ?>
             <div class="card-header bg-transparent"><strong>Mein Passwort ändern</strong></div>

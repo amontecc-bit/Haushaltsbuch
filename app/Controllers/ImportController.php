@@ -15,6 +15,7 @@ use App\Repositories\PurchaseRepository;
 use App\Repositories\RecurringRepository;
 use App\Repositories\RuleRepository;
 use App\Repositories\TransactionRepository;
+use App\Repositories\UserPreferenceRepository;
 use App\Services\CategorizationService;
 use App\Services\CsvImportService;
 use App\Services\RecurrenceService;
@@ -34,7 +35,8 @@ final class ImportController extends Controller
             'accounts' => $accounts,
             'profiles' => (new CsvProfileRepository())->all($this->hid),
             'batches'  => (new CsvProfileRepository())->recentBatches($this->hid, Auth::accountIds('view')),
-            'selected' => $this->request->int('account_id'),
+            'selected' => $this->request->int('account_id')
+                ?? (new UserPreferenceRepository())->account(Auth::id(), 'account_import', array_map('intval', array_column($accounts, 'id'))),
         ]);
     }
 
