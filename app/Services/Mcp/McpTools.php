@@ -4,9 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Mcp;
 
-use App\Core\Auth;
 use App\Core\Money;
-use App\Repositories\AccountRepository;
 use App\Repositories\CategoryRepository;
 use App\Repositories\InventoryRepository;
 use App\Repositories\RecipeRepository;
@@ -18,10 +16,11 @@ use App\Services\ShoppingListService;
 use App\Services\TransactionService;
 
 /**
- * Die Tools des MCP-Servers: Einkaufslisten, Vorrat, Rezepte und Bargeld-Ausgaben.
+ * Die Tools des MCP-Servers: Einkaufslisten, Vorrat, Rezepte und Bargeld-Ausgaben (Kalender: CalendarTools).
  *
  * Bewusst KEINE Finanzdaten: keine Kontostände, Umsätze, Preise, Geschäfte oder Einkäufe. Die einzige Ausnahme ist
- * das Buchen einer Bargeld-Ausgabe – die Antwort bestätigt nur die Buchung selbst. Neue Tools nur nach diesem Prinzip.
+ * das Buchen einer Bargeld-Ausgabe bzw. eines Kalender-Budgets auf ein Bargeld-Konto – die Antwort bestätigt nur die
+ * Buchung selbst. Neue Tools nur nach diesem Prinzip.
  * Der aufrufende Benutzer ist per Auth::actAs() gesetzt (Rechte auf Konten wie in der Web-Oberfläche).
  */
 final class McpTools extends ToolSet
@@ -38,19 +37,22 @@ final class McpTools extends ToolSet
 
     public static function instructions(): string
     {
-        return 'Haushaltsbuch einer Familie (deutschsprachig). Über diesen Zugang gibt es nur Einkaufslisten, Vorrat, Rezepte '
-            . 'und das Buchen von Bargeld-Ausgaben. Kontostände, Umsätze, Preise und Auswertungen sind bewusst nicht abrufbar – '
+        return 'Haushaltsbuch einer Familie (deutschsprachig). Über diesen Zugang gibt es nur Einkaufslisten, Vorrat, Rezepte, '
+            . 'den Kalender und das Buchen von Bargeld-Ausgaben. Kontostände, Umsätze, Preise und Auswertungen sind bewusst nicht abrufbar – '
             . 'bei solchen Fragen auf die Web-App verweisen. Posten heißen „virtuelle Posten“ (z. B. „Milch“) und bündeln '
             . 'gekaufte Produkte; vorhandene Namen bevorzugen (get_inventory mit filter=all), statt ähnliche neu anzulegen. '
             . 'Vor Bargeld-Buchungen Betrag und Zweck kurz bestätigen lassen, wenn sie nicht eindeutig sind. '
             . 'Beim Aufräumen der Posten (list_items, list_products) Änderungen zuerst als Vorschlag zeigen; '
-            . 'merge_items und delete_item nur nach ausdrücklicher Bestätigung.';
+            . 'merge_items und delete_item nur nach ausdrücklicher Bestätigung. '
+            . 'Kalender: Termine mit Vorlauf (Anreise) und Nachlauf (Abreise); role „owner“ = eigener Termin, „participant“ = nur Teilnehmer. '
+            . 'Zeiten als „JJJJ-MM-TT HH:MM“ in Ortszeit. delete_event nur nach Bestätigung; Budgets (falls freigegeben) vor dem Buchen bestätigen lassen.';
     }
 
-    /** Alle Tools: diese Gruppe plus Pflege der virtuellen Posten und Produkte */
+    /** Alle Tools: diese Gruppe plus Pflege der virtuellen Posten und Produkte sowie der Kalender */
     public function all(): array
     {
-        return $this->tools() + (new ItemTools($this->hid, $this->userId, $this->clientName))->tools();
+        return $this->tools() + (new ItemTools($this->hid, $this->userId, $this->clientName))->tools()
+            + (new CalendarTools($this->hid, $this->userId, $this->clientName))->tools();
     }
 
     public function tools(): array
@@ -775,32 +777,6 @@ final class McpTools extends ToolSet
             . ' · Kategorie: ' . ($category ?? 'ohne') . " · Konto: {$account['name']}";
         $this->log('book_cash_expense', $msg);
         return $msg;
-    }
-
-    /** Bargeld-Konto, auf das der Benutzer buchen darf; bei mehreren muss der Name passen */
-    private function cashAccount(string $name): array
-    {
-        $accounts = array_values(array_filter(
-            (new AccountRepository())->options($this->hid, Auth::accountIds('book')),
-            fn ($acc) => $acc['type'] === 'cash'
-        ));
-        if (!$accounts) {
-            throw new ToolError('Es gibt kein Bargeld-Konto, auf das du buchen darfst.');
-        }
-        if ($name !== '') {
-            foreach ($accounts as $acc) {
-                if (mb_strtolower($acc['name']) === mb_strtolower($name)) {
-                    return $acc;
-                }
-            }
-            $hits = array_values(array_filter($accounts, fn ($acc) => mb_stripos($acc['name'], $name) !== false));
-            if (count($hits) === 1) {
-                return $hits[0];
-            }
-        } elseif (count($accounts) === 1) {
-            return $accounts[0];
-        }
-        throw new ToolError('Bitte das Bargeld-Konto angeben: ' . implode(', ', array_column($accounts, 'name')) . '.');
     }
 
     /** Kategorie per Name oder automatisch aus der Beschreibung */

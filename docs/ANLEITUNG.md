@@ -1,7 +1,7 @@
 # Haushaltsbuch – Anleitung
 
 Diese Anleitung erklärt, wie du das Haushaltsbuch im Alltag benutzt: Ausgaben erfassen, Kontoauszüge einlesen,
-Kassenbons fotografieren, Auswertungen ansehen und planen, wie sich die Kontostände entwickeln.
+Kassenbons fotografieren, Auswertungen ansehen, Termine mit Budgets planen und sehen, wie sich die Kontostände entwickeln.
 
 > Alle Bilder stammen aus einem Beispiel-Haushalt („Familie Muster“) mit ausgedachten Zahlen.
 
@@ -18,10 +18,11 @@ Kassenbons fotografieren, Auswertungen ansehen und planen, wie sich die Kontost�
 9. [Kategorien und Regeln](#9-kategorien-und-regeln)
 10. [Auswertungen](#10-auswertungen)
 11. [Prognose](#11-prognose)
-12. [Kredite](#12-kredite)
-13. [Claude auf dem Smartphone](#13-claude-auf-dem-smartphone)
-14. [Für Administratoren: Konten, Familie, Einstellungen](#14-für-administratoren-konten-familie-einstellungen)
-15. [Häufige Fragen](#15-häufige-fragen)
+12. [Kalender](#12-kalender)
+13. [Kredite](#13-kredite)
+14. [Claude auf dem Smartphone](#14-claude-auf-dem-smartphone)
+15. [Für Administratoren: Konten, Familie, Einstellungen](#15-für-administratoren-konten-familie-einstellungen)
+16. [Häufige Fragen](#16-häufige-fragen)
 
 ---
 
@@ -497,7 +498,8 @@ Die **Prognose** zeigt, wie sich die Kontostände in den nächsten 3 bis 36 Mona
 So wird gerechnet:
 
 - Ausgangspunkt ist der **Kontostand heute**.
-- Dazu kommen alle **Fixkosten** an ihren Terminen (Liste „Künftige feste Buchungen“).
+- Dazu kommen alle **Fixkosten** an ihren Terminen und die noch nicht gebuchten **Budgets aus dem Kalender**
+  (Liste „Künftige feste Buchungen und Kalender-Budgets“, siehe [Kalender](#12-kalender)).
 - Alles Übrige, also Einkäufe, Tanken, Freizeit usw., fließt als **Durchschnitt der letzten Monate** ein
   („Ø variabel / Monat“, einstellbar: aus wie vielen Monaten).
 
@@ -506,7 +508,7 @@ warnt die Prognose mit einem roten Hinweis. Über das Auswahlfeld rechts oben ka
 Unter **Annahmen je Konto** steht, welcher Durchschnitt verwendet wird. Ein Klick darauf zeigt die Aufschlüsselung.
 
 > Verzerrt eine einmalige große Ausgabe den Durchschnitt, die Kategorie unter **Kategorien** mit
-> „In der Prognose ausklammern“ markieren. Kreditraten zählen nur mit, wenn sie als Fixkosten angelegt sind (siehe [Kredite](#12-kredite)).
+> „In der Prognose ausklammern“ markieren. Kreditraten zählen nur mit, wenn sie als Fixkosten angelegt sind (siehe [Kredite](#13-kredite)).
 
 ### Szenarien: „Was wäre, wenn …?“
 
@@ -518,7 +520,71 @@ Wählst du das Szenario aus, läuft der berechnete Durchschnitt als gestrichelte
 
 ---
 
-## 12. Kredite
+## 12. Kalender
+
+Unter **Kalender** hat jedes Familienmitglied seinen eigenen Kalender. Darin stehen alle Termine, die du selbst
+angelegt hast, und alle, zu denen dich jemand als **Teilnehmer** eingetragen hat.
+
+![Kalender](anleitung/kalender.png)
+
+- **Eigene Termine** sind farbig gefüllt. Termine, bei denen du **nur Teilnehmer** bist, sind hell mit farbigem Rand und
+  tragen ein Personen-Symbol mit Haken; in der Liste steht dazu „Teilnehmer · von …“.
+- **Vorlauf** (z. B. Anreise) und **Nachlauf** (z. B. Abreise) gehören zum Termin, erscheinen aber **schraffiert und
+  gestrichelt** direkt davor bzw. danach – so siehst du sofort, wann du wirklich losmusst und wann du wieder zurück bist.
+- Oben wechselst du zwischen **Monat**, **Woche** und **Liste**; mit dem Auswahlfeld siehst du auch den Kalender eines
+  anderen Familienmitglieds (Budgets anderer bleiben dabei verborgen).
+- Ein Klick auf eine Tageszahl legt dort einen neuen Termin an.
+
+![Woche](anleitung/kalender-woche.png)
+
+Auf dem Handy zeigt der Kalender die Termine als Liste, Vor- und Nachlauf eingerückt:
+
+<img src="anleitung/kalender-mobil.png" alt="Kalender auf dem Handy" width="260">
+
+### Termin anlegen
+
+**+ Termin** öffnet das Formular: Titel, Beginn und Ende (oder **ganztägig**), Vor- und Nachlauf, Ort, Wiederholung
+(täglich, wöchentlich, monatlich, jährlich – auch „alle 2 Wochen“ und mit Enddatum), Teilnehmer und Notiz.
+Vor- und Nachlauf gibst du frei ein: „30 min“, „1:15“, „2 h“ oder „1 Tag“. Verschiebst du den Beginn, wandert das Ende
+mit, die Dauer bleibt gleich.
+
+![Termin aus Vorlage](anleitung/kalender-termin-neu.png)
+
+**Teilnehmer**: Hake an, wer dabei ist. Der Termin erscheint dann auch in deren Kalendern. Ändern oder löschen kann ihn
+nur, wer ihn angelegt hat (und Administratoren).
+
+### Vorlagen
+
+Unter **Vorlagen** speicherst du Terminarten, die öfter vorkommen – z. B. „Schwimmtraining: 1:30, 20 Min. Anfahrt,
+30 Min. Heimweg“. Eine Vorlage enthält **Dauer**, **Vorlauf** und **Nachlauf**, dazu optional Titel, Ort, Farbe und einen
+**Budget-Vorschlag**. Wählst du sie im Terminformular aus, werden die Werte übernommen; ändern kannst du danach alles.
+Vorlagen sind persönlich – jedes Familienmitglied hat seine eigenen.
+
+![Vorlagen](anleitung/kalender-vorlagen.png)
+
+### Budgets
+
+Zu jedem Termin kann **jeder Teilnehmer sein eigenes Budget** planen: Betrag, Konto, Kategorie und Notiz – z. B. 25 €
+für ein Geburtstagsgeschenk. Bei Terminserien gilt das Budget **je Termin**.
+
+![Termin mit Budget](anleitung/kalender-termin.png)
+
+- Budgets mit Konto fließen in die **[Prognose](#11-prognose)** ein (Liste „Künftige feste Buchungen und
+  Kalender-Budgets“). Ohne Konto werden sie nur angezeigt.
+- Gebucht wird **nicht automatisch**. Mit **Als Ausgabe buchen** am Termin öffnet sich die Buchung mit dem geplanten
+  Betrag – den kannst du vor dem Buchen noch ändern, ebenso Konto, Datum und Kategorie.
+- Danach ist das Budget für diesen Termin „gebucht“ und zählt in der Prognose nicht mehr doppelt. Löschst du die
+  Buchung wieder, ist das Budget erneut offen.
+- Ist ein Termin vorbei und das Budget noch nicht gebucht, rechnet die Prognose es vorsichtshalber für morgen ein.
+
+<img src="anleitung/kalender-budget-buchen.png" alt="Budget als Ausgabe buchen" width="260">
+
+> Tipp: Unter **Einstellungen › Vorzugskonten** legst du mit „Kalender-Budget – Konto“ fest, welches Konto neue Budgets
+> vorschlagen.
+
+---
+
+## 13. Kredite
 
 Unter **Kredite** verwaltest du Darlehen (Annuitäten- oder Tilgungsdarlehen) mit Zinssatz, Rate, Auszahlung und
 erster Rate.
@@ -534,7 +600,7 @@ erster Rate.
 
 ---
 
-## 13. Claude auf dem Smartphone
+## 14. Claude auf dem Smartphone
 
 Mit der **Claude-App** kannst du Einkaufsliste, Vorrat und Rezepte per Chat oder Sprache bedienen, ohne das
 Haushaltsbuch zu öffnen. Zum Beispiel:
@@ -546,6 +612,8 @@ Haushaltsbuch zu öffnen. Zum Beispiel:
 - „Leg dieses Rezept an: …“ (Text oder Link einfügen) und danach „Setz die fehlenden Zutaten auf die Liste.“
 - „Wir haben die Lasagne für 4 gekocht.“ – die Zutaten werden vom Vorrat abgezogen.
 - „12,50 bar beim Bäcker.“ – bucht eine Bargeld-Ausgabe.
+- „Was steht diese Woche im Kalender?“ oder „Trag Lenas Schwimmtraining jeden Dienstag um 17 Uhr ein, mit Vorlage.“
+- „Ich war beim Kindergeburtstag, buch das Budget mit 28 Euro aus der Geldbörse.“ (nur mit freigegebenen Budgets)
 - „Räum meine virtuellen Posten auf: Gibt es doppelte, und welche Produkte sind noch keinem Posten zugeordnet?“ –
   Claude macht Vorschläge (zusammenführen, zuordnen, Referenzmenge und Verbrauchsdauer setzen) und ändert erst nach
   deiner Bestätigung.
@@ -556,6 +624,12 @@ Buchen von Bargeld-Ausgaben (auf Bargeld-Konten, für die du Buchungsrechte hast
 Auswertungen, Preise, Geschäfte und Kredite** sind über Claude nicht abrufbar. Fragst du danach, verweist Claude auf das
 Haushaltsbuch selbst. Gebuchte Bargeld-Ausgaben änderst oder löschst du wie gewohnt unter **Buchungen**; sie tragen
 die Notiz „per Claude erfasst“.
+
+**Kalender über Claude:** Claude sieht deine Termine (eigene und als Teilnehmer), kann Termine anlegen – auch mit
+Vorlagen, Vor-/Nachlauf, Wiederholung und Teilnehmern – und deine eigenen Termine ändern oder löschen. Deine
+**Budgets** sieht Claude nur, wenn du unter **Einstellungen › Claude (MCP)** den Schalter **„Meine Kalender-Budgets für
+Claude freigeben“** einschaltest. Dann kann Claude Budgets planen und als Ausgabe buchen – aber **nur auf Bargeld-Konten**,
+auf die du buchen darfst. Die Einstellung gilt nur für dich.
 
 ### Einrichten
 
@@ -580,7 +654,7 @@ Schaltet ein Administrator den Zugang aus, sind alle Verbindungen sofort gesperr
 
 ---
 
-## 14. Für Administratoren: Konten, Familie, Einstellungen
+## 15. Für Administratoren: Konten, Familie, Einstellungen
 
 ### Ersteinrichtung
 
@@ -619,13 +693,13 @@ Unter **Familie** legst du weitere Personen an (Name, E-Mail als Anmeldename, Pa
   API-Schlüssel von console.anthropic.com und kostet wenige Cent pro Bon. Beim Einlesen kann trotzdem jederzeit
   gewechselt werden.
 - **Prognose**: Standard-Zeitraum und aus wie vielen Monaten der Durchschnitt gebildet wird.
-- **Claude (MCP)**: Zugang für die Claude-App ein- und ausschalten, siehe [Kapitel 13](#13-claude-auf-dem-smartphone).
+- **Claude (MCP)**: Zugang für die Claude-App ein- und ausschalten, siehe [Kapitel 14](#14-claude-auf-dem-smartphone).
 
 ![Einstellungen](anleitung/einstellungen.png)
 
 ---
 
-## 15. Häufige Fragen
+## 16. Häufige Fragen
 
 **Muss ich Fixkosten jeden Monat selbst buchen?**
 Nein. Fällige Fixkosten mit „Automatisch buchen“ werden beim ersten Öffnen des Haushaltsbuchs am Tag selbst gebucht.

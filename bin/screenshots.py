@@ -8,6 +8,7 @@ Voraussetzungen (siehe docs/DEVELOPMENT.md, „Manuelle / Browser-Tests“):
 Danach __test.php löschen und .htaccess zurücksetzen.
 """
 import base64
+import datetime
 import json
 import os
 import subprocess
@@ -25,6 +26,11 @@ PORT = 9333
 
 DESKTOP = (1280, 820, 1)
 MOBILE = (390, 844, 2)
+
+# Kalender der Demo-Daten liegt relativ zum Montag dieser Woche (bin/demo_seed.php)
+_MON = datetime.date.today() - datetime.timedelta(days=datetime.date.today().weekday())
+_PARTY = (_MON + datetime.timedelta(days=5)).isoformat()      # Kindergeburtstag (Termin 4)
+_NEXT_MONTH = (_MON.replace(day=1) + datetime.timedelta(days=32)).strftime("%Y-%m")
 
 # Name, Pfad, Ansicht, JS vor dem Foto, max. Höhe (None = nur sichtbarer Bereich)
 SHOTS = [
@@ -74,6 +80,13 @@ SHOTS = [
     ("benutzer-rechte", "/users/2/edit", DESKTOP, None, 1100),
     ("einstellungen", "/settings", DESKTOP, None, 1200),
     ("mehr-mobil", "/more", MOBILE, None, None),
+    ("kalender", "/calendar?month=" + _NEXT_MONTH, DESKTOP, None, 1100),
+    ("kalender-woche", "/calendar?view=week", DESKTOP, None, 900),
+    ("kalender-mobil", "/calendar", MOBILE, None, None),
+    ("kalender-termin", "/calendar/4?date=" + _PARTY, DESKTOP, None, 900),
+    ("kalender-termin-neu", "/calendar/new?template=1&date=" + _PARTY, DESKTOP, None, 1500),
+    ("kalender-vorlagen", "/calendar/templates", DESKTOP, None, 900),
+    ("kalender-budget-buchen", "/calendar/4/book?date=" + _PARTY, MOBILE, None, None),
     ("claude-einstellungen", "/settings/claude", DESKTOP, None, 1100),
     ("claude-freigabe-mobil", "/oauth/authorize?response_type=code&client_id=hb_demo"
      "&redirect_uri=https%3A%2F%2Fclaude.ai%2Fapi%2Fmcp%2Fauth_callback&code_challenge_method=S256"

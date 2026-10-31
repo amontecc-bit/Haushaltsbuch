@@ -96,6 +96,21 @@ $catTotal = array_sum(array_column($categories, 'total')) ?: 1;
     <div class="col-lg-5">
         <div class="card mb-3">
             <div class="card-header bg-transparent d-flex align-items-center">
+                <strong>Nächste Termine</strong>
+                <a class="ms-auto small" href="<?= e(url('/calendar')) ?>">Kalender</a>
+            </div>
+            <?php if (!$events): ?>
+                <div class="p-3 small text-body-secondary">In den nächsten 14 Tagen keine Termine. <a href="<?= e(url('/calendar/new')) ?>">Termin anlegen</a></div>
+            <?php else: ?>
+                <?php foreach ($events as $o): ?>
+                    <?= View::partial('calendar/chip', ['o' => $o, 's' => ['kind' => 'main', 'all_day' => (bool) $o['event']['all_day'],
+                        'from' => date_de($o['date'], true) . ' ' . substr($o['start'], 11, 5), 'to' => substr($o['end'], 11, 5)], 'mode' => 'row']) ?>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header bg-transparent d-flex align-items-center">
                 <strong>Ausgaben diesen Monat</strong>
                 <a class="ms-auto small" href="<?= e(url('/reports')) ?>">Auswertung</a>
             </div>

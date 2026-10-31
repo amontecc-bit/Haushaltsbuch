@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Controllers\AccountController;
 use App\Controllers\AuthController;
+use App\Controllers\CalendarController;
 use App\Controllers\CategoryController;
 use App\Controllers\DashboardController;
 use App\Controllers\ForecastController;
@@ -151,6 +152,22 @@ $router->post('/loans/{id}/change', [LoanController::class, 'addChange']);
 $router->post('/loans/{id}/change/{cid}/delete', [LoanController::class, 'deleteChange']);
 $router->post('/loans/{id}/recurring', [LoanController::class, 'createRecurring']);
 
+// Kalender
+$router->get('/calendar', [CalendarController::class, 'index']);
+$router->get('/calendar/new', [CalendarController::class, 'create']);
+$router->post('/calendar', [CalendarController::class, 'store']);
+$router->get('/calendar/templates', [CalendarController::class, 'templates']);
+$router->post('/calendar/templates', [CalendarController::class, 'storeTemplate']);
+$router->post('/calendar/templates/{id}', [CalendarController::class, 'updateTemplate']);
+$router->post('/calendar/templates/{id}/delete', [CalendarController::class, 'deleteTemplate']);
+$router->get('/calendar/{id}', [CalendarController::class, 'show']);
+$router->get('/calendar/{id}/edit', [CalendarController::class, 'edit']);
+$router->post('/calendar/{id}', [CalendarController::class, 'update']);
+$router->post('/calendar/{id}/delete', [CalendarController::class, 'delete']);
+$router->post('/calendar/{id}/budget', [CalendarController::class, 'budget']);
+$router->get('/calendar/{id}/book', [CalendarController::class, 'bookForm']);
+$router->post('/calendar/{id}/book', [CalendarController::class, 'book']);
+
 // Kategorien & Regeln
 $router->get('/categories', [CategoryController::class, 'index']);
 $router->post('/categories', [CategoryController::class, 'store'], 'admin');
@@ -174,6 +191,7 @@ $router->post('/settings/password', [SettingsController::class, 'password']);
 $router->get('/more', [SettingsController::class, 'more']);
 $router->get('/settings/claude', [SettingsController::class, 'claude']);
 $router->post('/settings/claude', [SettingsController::class, 'claudeToggle'], 'admin');
+$router->post('/settings/claude/budgets', [SettingsController::class, 'claudeBudgets']);
 $router->post('/settings/claude/{id}/revoke', [SettingsController::class, 'claudeRevoke']);
 
 // Claude (MCP-Server) mit OAuth – 'api' = ohne Sitzung/CSRF, die Actions prüfen selbst

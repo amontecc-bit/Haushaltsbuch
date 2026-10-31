@@ -91,6 +91,7 @@ final class SettingsController extends Controller
             'enabled'     => OAuthController::enabled($this->hid),
             'isAdmin'     => Auth::isAdmin(),
             'mcpUrl'      => absolute_url('/mcp'),
+            'budgetsForClaude' => (new UserPreferenceRepository())->get(Auth::id(), 'mcp_calendar_budgets') === '1',
             'connections' => $repo->connections($this->hid, Auth::isAdmin() ? null : Auth::id()),
             'log'         => $repo->recentLog($this->hid),
         ]);
@@ -101,6 +102,14 @@ final class SettingsController extends Controller
         $on = $this->request->bool('enabled');
         (new SettingsRepository())->set($this->hid, 'mcp_enabled', $on ? '1' : '0');
         $this->redirect('/settings/claude', $on ? 'Claude-Zugriff eingeschaltet.' : 'Claude-Zugriff ausgeschaltet – bestehende Verbindungen sind gesperrt.');
+    }
+
+    /** Persönlich: Kalender-Budgets für Claude freigeben (anzeigen und auf Bargeldkonten buchen) */
+    public function claudeBudgets(): void
+    {
+        $on = $this->request->bool('enabled');
+        (new UserPreferenceRepository())->set(Auth::id(), 'mcp_calendar_budgets', $on ? '1' : null);
+        $this->redirect('/settings/claude', $on ? 'Claude sieht jetzt deine Kalender-Budgets.' : 'Deine Kalender-Budgets sind für Claude ausgeblendet.');
     }
 
     /** Verbindung trennen (eigene; Admins jede im Haushalt) */

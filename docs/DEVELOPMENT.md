@@ -11,7 +11,7 @@ Ergänzt `CLAUDE.md` um Details, die man beim Ändern einzelner Bereiche braucht
 | `accounts` | `opening_balance` + `opening_date`, `include_in_forecast`, `archived` (Konten mit Buchungen werden nur archiviert) |
 | `account_permissions` | (account, user) → `can_view`, `can_book`; Admins brauchen keine Einträge |
 | `categories` | zwei Ebenen (`parent_id`), `type` expense/income, `icon` (Bootstrap-Icon-Name), `color` |
-| `transactions` | `amount` mit Vorzeichen, `source` manual/csv/recurring/purchase, `import_hash` (Duplikate), `recurring_id`, `transfer_group`, `created_by` |
+| `transactions` | `amount` mit Vorzeichen, `source` manual/csv/recurring/purchase/calendar (gebuchtes Kalender-Budget), `import_hash` (Duplikate), `recurring_id`, `transfer_group`, `created_by` |
 | `recurring_transactions` | Vorlage: `interval`, `day_of_month`, `start_date`/`end_date`, `last_booked_date`, `auto_book` (0 = nur Prognose), `to_account_id` (Umbuchung), `loan_id` |
 | `csv_profiles` | `household_id` NULL = mitgeliefert (002_csv_presets.sql); `mapping` JSON: Feld → Spaltenname |
 | `import_batches` | Protokoll je Import |
@@ -26,6 +26,10 @@ Ergänzt `CLAUDE.md` um Details, die man beim Ändern einzelner Bereiche braucht
 | `recipes`, `recipe_ingredients`, `recipe_class_groups`/`_values`/`_links` | Rezepte (`servings`, Freitext), Zutaten = virtueller Posten + Menge/Einheit, Klassifikation als Gruppen mit Werten |
 | `oauth_clients`, `oauth_codes`, `oauth_tokens` | OAuth für den MCP-Server (009): per dynamischer Registrierung angelegte Clients (`redirect_uris` JSON, `secret_hash` nur bei vertraulichen Clients), Codes (10 min, PKCE-Challenge), je Verbindung eine Token-Zeile (Access 1 h, Refresh 90 Tage, beim Erneuern ausgetauscht). Alles nur als SHA-256 gespeichert |
 | `mcp_log` | Protokoll aller Änderungen über Claude (Tool, Zusammenfassung, Benutzer, Client) |
+| `calendar_events` | Termine (010): `start_at`/`end_at` (Ende **exklusiv**, ganztägig = Folgetag 00:00), `lead_minutes`/`trail_minutes` (Vor-/Nachlauf, außerhalb von start/end), `recurrence` none/daily/weekly/monthly/yearly + `recurrence_interval`/`recurrence_until`, `created_by` = Besitzer, `template_id` |
+| `calendar_participants` / `calendar_exceptions` | Teilnehmer (Ersteller immer dabei) bzw. gelöschte Einzeltermine einer Serie |
+| `calendar_budgets` / `calendar_budget_bookings` | Budget je Termin **und Teilnehmer** (`amount` positiv, `account_id` = Planungskonto für die Prognose); Buchung je Vorkommen mit `transaction_id` (FK `ON DELETE CASCADE` → Buchung löschen öffnet das Budget wieder) |
+| `calendar_templates` | persönliche Vorlagen je Benutzer: Dauer, Vor-/Nachlauf, ganztägig, Farbe, optional Budget-Vorschlag |
 
 Saldo eines Kontos = `opening_balance + SUM(transactions.amount bis Stichtag)`.
 
@@ -127,10 +131,11 @@ müssen zur Referenz passen (g/kg, ml/l oder Stück) – das prüft `RecipeServi
 - **Grundsatz: keine Finanzdaten.** Tools geben nur Namen, Mengen, Daten und Status aus – keine Preise, Geschäfte,
   Einkäufe, Kontostände oder Umsätze (eigene, schmale Ausgaben statt Controller-Payloads weiterreichen). Einzige
   Ausnahme `book_cash_expense`: nur Ausgaben, nur Konten vom Typ `cash` mit `book`-Recht, ≤ 5.000 €, Datum höchstens
-  ein Jahr zurück, Antwort ohne Saldo, Notiz „per Claude erfasst“. Jede Änderung landet in `mcp_log`.
+  ein Jahr zurück, Antwort ohne Saldo, Notiz „per Claude erfasst“; ebenso `book_event_budget` (Kalender, siehe oben,
+  nur mit persönlicher Freigabe). Jede Änderung landet in `mcp_log`.
 - Tool-Gruppen erben von `ToolSet` (Parameter lesen, Posten/Kategorie per Name finden, Protokoll): `McpTools`
-  (Listen, Vorrat, Rezepte, Bargeld) und `ItemTools` (virtuelle Posten und Produkt-Zuordnung). `McpTools::all()`
-  fügt beide zusammen. Echte Produkte über `ProductRepository::overview()` – nur Name, Anzahl Käufe, letztes Kaufdatum
+  (Listen, Vorrat, Rezepte, Bargeld), `ItemTools` (virtuelle Posten und Produkt-Zuordnung) und `CalendarTools`
+  (Kalender). `McpTools::all()` fügt alle zusammen. Echte Produkte über `ProductRepository::overview()` – nur Name, Anzahl Käufe, letztes Kaufdatum
   aus sichtbaren Einkäufen.
 - `merge_items` → `ShoppingListService::mergeItems()`: Faktor = Referenzen des Ziels je Referenz der Quelle
   (`mergeFactor()`, null bei Gewicht ↔ Volumen ↔ Stück); `ShoppingRepository::mergeItem()` verschiebt in einer
@@ -140,13 +145,36 @@ müssen zur Referenz passen (g/kg, ml/l oder Stück) – das prüft `RecipeServi
 - Fachliche Fehler eines Tools als `ToolError` werfen – sie gehen als `isError`-Ergebnis an Claude, das dann nachfragen
   oder korrigieren kann; andere Exceptions werden geloggt und nur allgemein gemeldet.
 
+**Kalender** (`CalendarController`, `CalendarService`, `CalendarRepository`):
+- `CalendarService::occurrences()` erzeugt die Startdaten einer Serie (Monats-/Jahreswiederholung mit
+  Monatsende-Clamping über `RecurrenceService::dateFor()`), `instance()` die Zeiten eines Vorkommens inkl. Vor-/Nachlauf,
+  `segments()` zerlegt es tageweise in `lead`/`main`/`trail` (auch über Mitternacht) – daraus bauen Monats-, Wochen- und
+  Listenansicht ihre Einträge (`Views/calendar/chip.php`). `forUser()` liefert die Vorkommen aller Termine, an denen ein
+  Benutzer teilnimmt, mit Rolle (`owner`/`participant`), Teilnehmern und dem Budget des angegebenen Benutzers.
+- `buildEvent()` prüft Eingaben gemeinsam für Web und MCP (ganztägiges Ende im Formular = letzter Tag inklusive,
+  gespeichert exklusiv). `save()` schreibt Termin + Teilnehmer in einer Transaktion und entfernt Budgets von
+  ausgetragenen Teilnehmern, solange sie nicht gebucht sind.
+- Rechte: Termine sieht jeder im Haushalt; ändern/löschen nur `created_by` oder Admin (`canEdit()`); Budget setzen/buchen
+  nur der Teilnehmer selbst. Budgets anderer zeigt die Oberfläche nur Admins.
+- `bookBudget()` legt eine Ausgabe mit `source = 'calendar'` an (Prüfung `Auth::can(…, 'book')`) und merkt sie je
+  Vorkommen in `calendar_budget_bookings`.
+- **Prognose:** `ForecastService::budgetEvents()` nimmt offene Budgets mit Konto unter den Prognose-Konten als Termine
+  (`kind = 'budget'`); überfällige, ungebuchte Vorkommen (bis 60 Tage zurück) landen auf morgen
+  (`CalendarService::openBudgetDates()`). Gebuchte Budgets (`source = 'calendar'`) klammert der variable Ø aus.
+- **MCP:** `Mcp\CalendarTools` (in `McpTools::all()`): `list_household_members`, `list_calendar`, `get_event`,
+  `list_event_templates`, `create_event`, `update_event`, `delete_event`; nur mit `user_preferences.mcp_calendar_budgets = 1`
+  (Schalter je Benutzer unter Einstellungen › Claude) zusätzlich `set_event_budget` und `book_event_budget` sowie
+  Budgetfelder in den Antworten (`visibleTools()`). Buchen nur auf `cash`-Konten mit Buchungsrecht (`ToolSet::cashAccount()`),
+  ≤ `McpTools::CASH_MAX_CENTS`, Antwort ohne Saldo.
+
 ## Tests
 
 - `tests/Unit/*Test.php` decken Money, Recurrence, CSV-Import (Fixtures Sparkasse Windows-1252, ING mit Vorspann,
   DKB, generisch), ReceiptTextParser (inkl. echter Tesseract-Ausgabe `rewe_ocr.txt`), Categorization,
   LoanCalculator (gegen geschlossene Annuitätenformel), Forecast, Einkaufsliste, Vorrat (Einheiten, Faktor aus dem
   Namen, FIFO, Chargen-Abgleich, Auto-Liste), Rezepte (Skalierung, Fehlmengen, Sortierung), MCP-Protokoll
-  (`McpServer`) und OAuth-Hilfen (PKCE, Rückruf-Adressen, Header) ab. Controller/Views haben keine Unit-Tests.
+  (`McpServer`), OAuth-Hilfen (PKCE, Rückruf-Adressen, Header) und Kalender (Wiederholungen, Vor-/Nachlauf-Abschnitte,
+  Dauer-Eingaben, Vorlagen, Prüfung, offene Budgets, Budget-Tools nur mit Freigabe) ab. Controller/Views haben keine Unit-Tests.
 - `tests/bootstrap.php` lädt Config + Helfer, **keine DB** – Services, die DB brauchen, über ihre statischen
   reinen Funktionen testen.
 

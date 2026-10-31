@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Mcp;
 
+use App\Core\Auth;
+use App\Repositories\AccountRepository;
 use App\Repositories\CategoryRepository;
 use App\Repositories\OAuthRepository;
 use App\Repositories\ShoppingRepository;
@@ -94,6 +96,32 @@ abstract class ToolSet
         }
         throw new ToolError("Kategorie „{$name}“ " . ($hits ? 'ist mehrdeutig' : 'gibt es nicht') . '. Ausgaben-Kategorien: '
             . implode(', ', array_slice(array_column($hits ?: $all, 'full_name'), 0, 60)) . '.');
+    }
+
+    /** Bargeld-Konto, auf das der Benutzer buchen darf; bei mehreren muss der Name passen */
+    protected function cashAccount(string $name): array
+    {
+        $accounts = array_values(array_filter(
+            (new AccountRepository())->options($this->hid, Auth::accountIds('book')),
+            fn ($acc) => $acc['type'] === 'cash'
+        ));
+        if (!$accounts) {
+            throw new ToolError('Es gibt kein Bargeld-Konto, auf das du buchen darfst.');
+        }
+        if ($name !== '') {
+            foreach ($accounts as $acc) {
+                if (mb_strtolower($acc['name']) === mb_strtolower($name)) {
+                    return $acc;
+                }
+            }
+            $hits = array_values(array_filter($accounts, fn ($acc) => mb_stripos($acc['name'], $name) !== false));
+            if (count($hits) === 1) {
+                return $hits[0];
+            }
+        } elseif (count($accounts) === 1) {
+            return $accounts[0];
+        }
+        throw new ToolError('Bitte das Bargeld-Konto angeben: ' . implode(', ', array_column($accounts, 'name')) . '.');
     }
 
     protected static function readOnly(): array
