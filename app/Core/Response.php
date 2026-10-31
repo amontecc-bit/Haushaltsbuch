@@ -28,9 +28,23 @@ final class Response
         fwrite($out, "\xEF\xBB\xBF");
         fputcsv($out, $header, ';');
         foreach ($rows as $row) {
-            fputcsv($out, $row, ';');
+            fputcsv($out, array_map([self::class, 'csvCell'], $row), ';');
         }
         fclose($out);
         exit;
+    }
+
+    /**
+     * Schutz vor Formel-Injection: Texte, die Excel/LibreOffice als Formel ausführen würden (=, +, -, @, Tab, CR am Anfang),
+     * bekommen ein ' vorangestellt. Empfänger/Verwendungszweck stammen aus Kontoauszügen und damit von Fremden.
+     * Reine Zahlen (z. B. "-12,50") bleiben unverändert.
+     */
+    public static function csvCell(mixed $value): string
+    {
+        $v = (string) ($value ?? '');
+        if ($v === '' || preg_match('/^[+-]?\d+([.,]\d+)?$/', $v)) {
+            return $v;
+        }
+        return preg_match('/^[=+\-@\t\r]/', $v) ? "'" . $v : $v;
     }
 }

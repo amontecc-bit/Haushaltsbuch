@@ -32,7 +32,7 @@ Alle Frontend-Bibliotheken liegen lokal unter `public/assets/vendor/`. Es wird k
 
 ```bash
 composer install
-cp .env.example .env          # Zugangsdaten prüfen (XAMPP: root ohne Passwort)
+cp .env.example .env          # Zugangsdaten prüfen (XAMPP: root ohne Passwort), zum Entwickeln APP_DEBUG=true
 php bin/migrate.php           # legt die Datenbank „haushaltsbuch“ samt Tabellen an
 ```
 
