@@ -6,6 +6,7 @@ use App\Core\Session;
 $path = $request->path ?? '/';
 $nav = [
     ['/', 'speedometer2', 'Übersicht'],
+    ['/calendar', 'calendar3', 'Kalender'],
     ['/transactions', 'list-ul', 'Buchungen'],
     ['/purchases', 'basket', 'Einkäufe'],
     ['/shopping', 'card-checklist', 'Einkaufsliste'],
@@ -142,6 +143,7 @@ $flashes = Session::pullFlash();
                 <a href="<?= e(url('/purchases/new', ['mode' => 'pdf'])) ?>"><i class="bi bi-file-earmark-pdf text-danger"></i>PDF einlesen</a>
                 <a href="<?= e(url('/import')) ?>"><i class="bi bi-filetype-csv text-info"></i>CSV-Import</a>
                 <a href="<?= e(url('/recurring/new')) ?>"><i class="bi bi-arrow-repeat text-secondary"></i>Fixkosten</a>
+                <a href="<?= e(url('/calendar/new')) ?>"><i class="bi bi-calendar-plus text-primary"></i>Termin</a>
             </div>
         </div>
     </div>

@@ -7,6 +7,7 @@ namespace App\Services;
 use App\Core\Database;
 use App\Core\Money;
 use App\Repositories\AccountRepository;
+use App\Repositories\CalendarRepository;
 use App\Repositories\RecurringRepository;
 use DateTimeImmutable;
 
@@ -14,6 +15,7 @@ use DateTimeImmutable;
  * Prognose der Kontostände:
  *   Startsaldo heute
  * + künftige Termine aller aktiven wiederkehrenden Buchungen (inkl. Kreditraten, Umbuchungen)
+ * + offene Budgets aus dem Kalender (je Vorkommen; überfällige, noch nicht gebuchte auf morgen)
  * + variabler Saldo pro Monat, gleichmäßig auf die Tage verteilt: je Konto entweder der Ø der letzten N vollen Monate
  *   (ohne Daueraufträge, Umbuchungen, erkannte Umbuchungspaare und ausgeklammerte Kategorien) oder – in einem
  *   Szenario – ein von Hand festgelegter Wert.
@@ -45,6 +47,8 @@ final class ForecastService
         }
 
         $events = $this->futureEvents($ids, $today, $end);
+        $events = array_merge($events, $this->budgetEvents($ids, $today, $end));
+        usort($events, fn ($a, $b) => $a['date'] <=> $b['date']);
         $variable = $this->variable($ids, $avgMonths, $today);
         $manual = array_intersect_key($manual ?? [], array_flip($ids));
         $effective = self::effectiveVariable($ids, $variable['averages'], $manual);
@@ -161,6 +165,38 @@ final class ForecastService
     }
 
     /**
+     * Offene Kalender-Budgets als Ausgaben: je nicht gebuchtem Vorkommen bis 60 Tage zurück (überfällige auf morgen).
+     * Nur Budgets mit Planungskonto unter den Prognose-Konten.
+     */
+    private function budgetEvents(array $ids, string $today, string $end): array
+    {
+        try {
+            $rows = (new CalendarRepository())->budgetsForForecast($this->householdId, $ids);
+        } catch (\PDOException $e) {
+            error_log('Prognose/Kalender: ' . $e->getMessage()); // z. B. Migration noch nicht gelaufen
+            return [];
+        }
+        $from = (new DateTimeImmutable($today))->modify('-60 days')->format('Y-m-d');
+        $events = [];
+        foreach ($rows as $r) {
+            $dates = CalendarService::occurrences($r, $from, $end, $r['exceptions']);
+            foreach (CalendarService::openBudgetDates($dates, $r['booked'], $today) as $d) {
+                $events[] = [
+                    'date'       => $d['date'],
+                    'account_id' => (int) $r['account_id'],
+                    'amount'     => -abs((float) $r['amount']),
+                    'label'      => 'Budget: ' . $r['title'] . ($d['overdue'] ? ' (offen seit ' . date_de($d['occurrence']) . ')' : ''),
+                    'event_id'   => (int) $r['id'],
+                    'occurrence' => $d['occurrence'],
+                    'user_name'  => $r['user_name'],
+                    'kind'       => 'budget',
+                ];
+            }
+        }
+        return $events;
+    }
+
+    /**
      * Durchschnittlicher variabler Monatssaldo je Konto aus den letzten $avgMonths vollen Monaten.
      * Berücksichtigt nur Monate ab der ersten Buchung auf dem Konto.
      * @return array<int,float>
@@ -172,7 +208,7 @@ final class ForecastService
 
     /**
      * Variabler Ø je Konto plus Aufschlüsselung nach Hauptkategorie und nach nicht gezählten Beträgen.
-     * Nicht variabel sind: Fixkosten (recurring_id), Umbuchungen (transfer_group), Buchungen in Kategorien mit
+     * Nicht variabel sind: Fixkosten (recurring_id), gebuchte Kalender-Budgets (source = 'calendar'), Umbuchungen (transfer_group), Buchungen in Kategorien mit
      * „in Prognose ausklammern“ (auch über die Hauptkategorie) und erkannte Umbuchungspaare aus dem Import:
      * Gegenbuchung mit umgekehrtem Betrag auf einem anderen Prognose-Konto, höchstens 3 Tage auseinander,
      * selbst weder Umbuchung noch Fixkosten (sonst würde sie – z. B. zusätzlich zu einer Fixkosten-Umbuchung – doppelt zählen).
@@ -204,6 +240,7 @@ final class ForecastService
         $st = $db->prepare(
             "SELECT t.account_id, COALESCE(c.parent_id, c.id) AS cid,
                     CASE WHEN t.recurring_id IS NOT NULL THEN 'fixed'
+                         WHEN t.source = 'calendar' THEN 'calendar'
                          WHEN t.transfer_group IS NOT NULL THEN 'transfer'
                          WHEN EXISTS (SELECT 1 FROM transactions o
                                       WHERE o.household_id = t.household_id AND o.account_id IN ($in) AND o.account_id <> t.account_id

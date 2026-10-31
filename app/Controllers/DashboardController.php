@@ -10,6 +10,7 @@ use App\Repositories\AccountRepository;
 use App\Repositories\LoanRepository;
 use App\Repositories\RecurringRepository;
 use App\Repositories\TransactionRepository;
+use App\Services\CalendarService;
 use App\Services\ForecastService;
 use App\Services\LoanCalculator;
 use App\Services\RecurrenceService;
@@ -45,6 +46,16 @@ final class DashboardController extends Controller
         }
         usort($upcoming, fn ($a, $b) => $a['date'] <=> $b['date']);
 
+        // Nächste Termine (eigene und als Teilnehmer), ohne bereits vergangene
+        try {
+            $events = array_slice(array_values(array_filter(
+                CalendarService::forUser($this->hid, Auth::id(), date('Y-m-d'), date('Y-m-d', strtotime('+14 days')), Auth::id()),
+                fn ($o) => $o['end'] > date('Y-m-d H:i:s')
+            )), 0, 4);
+        } catch (\PDOException $e) {
+            $events = []; // Migration noch nicht gelaufen
+        }
+
         // Mini-Prognose 3 Monate
         $forecast = (new ForecastService($this->hid, $ids))->run(3, 6);
         $step = max(1, (int) floor(count($forecast['dates']) / 30));
@@ -71,6 +82,7 @@ final class DashboardController extends Controller
             'categories' => array_slice($report->byCategory($monthStart, $monthEnd), 0, 6),
             'recent'     => (new TransactionRepository())->search($this->hid, $ids, [], 8),
             'upcoming'   => array_slice($upcoming, 0, 6),
+            'events'     => $events,
             'mini'       => $mini,
             'forecastMin' => $forecast['min'],
             'loanDebt'   => $loanDebt,

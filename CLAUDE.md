@@ -9,7 +9,8 @@ technische Details zu Abläufen und Tests in `docs/DEVELOPMENT.md`, die Bedienun
 Haushaltsbuch-Web-App für eine Familie: Konten, Buchungen, Fixkosten, CSV-Import, Einkäufe mit Einzelposten
 (Hand/PDF/Kassenbon-Foto, lokale OCR oder Claude API), Einkaufslisten aus virtuellen Posten, Vorrat mit automatischer
 Einkaufsliste, Rezepte mit Vorschlägen nach Vorrat, Kategorisierung mit Lernen, Auswertungen, Prognose, Kredite,
-MCP-Server mit OAuth für die Claude-App (nur Einkaufsliste, Vorrat, Rezepte, Posten-Pflege, Bargeld-Buchung – keine Finanzdaten).
+Kalender je Mitglied (Vor-/Nachlauf, Teilnehmer, Vorlagen, Budgets je Termin → Prognose, Buchen per Knopf),
+MCP-Server mit OAuth für die Claude-App (nur Einkaufsliste, Vorrat, Rezepte, Posten-Pflege, Kalender, Bargeld-Buchung – keine Finanzdaten).
 **UI-Sprache und Code-Kommentare: Deutsch.** Bezeichner (Klassen, Methoden, Spalten) Englisch.
 
 - PHP 8.3 (Minimum 8.1), eigenes schlankes MVC, **kein Framework**. Composer nur für: `smalot/pdfparser`,
@@ -63,12 +64,13 @@ Header `X-CSRF-Token`); `HB.post()` in `public/assets/js/app.js` setzt den Heade
 | `ReceiptTextParser` | Bontext/PDF-Text → Geschäft, Datum, Summe, Posten; toleriert OCR-Fehler, heilt Einzelziffern über die Summe; mehrere Fotos (``-getrennt) werden einzeln gelesen und überlappend zusammengeführt; mit `$ocr = true` Platzhalter (`missing`) für unlesbare Zeilen und `suspect` für geratene/unplausible Preise; kennt EDEKA/Marktkauf-PDF-Bons und REWE-Onlinerechnungen |
 | `AiReceiptRecognizer` | Claude API (offizielles PHP-SDK, Beta-Messages mit `fallbacks: 'default'`), JSON-Schema-Ausgabe; `effort` nur bei Modellen, die ihn kennen (`supportsEffort()`, sonst automatische Wiederholung ohne) |
 | `ReportService` | Summen/Kategorien/Monatsverläufe; mit Einkauf verknüpfte Buchungen optional nach Posten aufgeteilt; Umbuchungen nur bei Kontofilter |
-| `ForecastService` | Prognose: Saldo heute + Fixkosten-Termine + variabler Monatssaldo je Konto – Ø (ohne `recurring_id`/Umbuchungen/erkannte Import-Paare/ausgeklammerte Kategorien) oder Handwert aus einem Szenario |
+| `ForecastService` | Prognose: Saldo heute + Fixkosten-Termine + offene Kalender-Budgets (mit Konto; überfällige auf morgen) + variabler Monatssaldo je Konto – Ø (ohne `recurring_id`/gebuchte Budgets/Umbuchungen/erkannte Import-Paare/ausgeklammerte Kategorien) oder Handwert aus einem Szenario |
 | `LoanCalculator` | Tilgungsplan (30/360, erste Periode taggenau), Sondertilgungen, Zins-/Ratenänderungen, `balanceAt()` |
 | `ShoppingListService` | Einkaufsliste: `match()` gleicht offene Einträge mit den Posten eines Einkaufs ab (zugeordnete Produkte des virtuellen Postens, sonst exakt gleicher normalisierter Name → Produkt wird gelernt); `matchPurchase()` läuft nach jedem Speichern eines Einkaufs (nur Einträge, die bis zum Einkaufstag angelegt wurden) |
 | `InventoryService` | Vorrat je virtuellem Posten in Referenzeinheiten: Einheiten (`toRef`), Faktor aus dem Produktnamen (`guessFactor`), Chargen je Einkauf (`syncPurchase`, stabil über purchase_id+product_id), FIFO-Verbrauch, Korrektur, `refreshAutoList()` (Liste „Automatisch“) |
 | `RecipeService` | Rezept gegen Vorrat (`evaluate`, Portionen skaliert, Grundvorrat), Sortierung der Vorschläge (`rank`); DB-Teil gemeinsam für Web und MCP: `ingredientRows` (Zutaten prüfen/anlegen), `cook`, `addMissingToList`, `evaluateAll`, `card` |
-| `Mcp\McpServer` / `Mcp\McpTools` + `Mcp\ItemTools` | MCP-Protokoll (JSON-RPC, zustandslos, reine Klasse) bzw. die 23 Tools für Claude (Basis `Mcp\ToolSet`; `ItemTools` = virtuelle Posten, Produkt-Zuordnung, `merge_items`). **Keine Finanzdaten** ausgeben (keine Preise, Geschäfte, Einkäufe, Salden, Umsätze); einzige Ausnahme `book_cash_expense` (nur `cash`-Konten mit Buchungsrecht, ≤ 5.000 €, Antwort ohne Saldo). Fachfehler als `ToolError`, Änderungen nach `mcp_log` |
+| `CalendarService` | Kalender: `occurrences()` (Wiederholung, Clamping, Ausnahmen), `instance()`/`segments()` (Vor-/Nachlauf tageweise, Ende exklusiv), `parseDuration()`, `applyTemplate()`, `buildEvent()` (Prüfung für Web und MCP), `forUser()`, `save()`, `bookBudget()` (`source = 'calendar'`); Rechte: ändern nur Ersteller/Admin, Budget nur der Teilnehmer selbst |
+| `Mcp\McpServer` / `Mcp\McpTools` + `Mcp\ItemTools` + `Mcp\CalendarTools` | MCP-Protokoll (JSON-RPC, zustandslos, reine Klasse) bzw. die 30 Tools für Claude (+2 Budget-Tools nur mit persönlicher Freigabe `user_preferences.mcp_calendar_budgets`; Basis `Mcp\ToolSet`; `ItemTools` = virtuelle Posten, Produkt-Zuordnung, `merge_items`; `CalendarTools` = Termine, Vorlagen, Budgets). **Keine Finanzdaten** ausgeben (keine Preise, Geschäfte, Einkäufe, Salden, Umsätze); einzige Ausnahmen `book_cash_expense` und `book_event_budget` (nur `cash`-Konten mit Buchungsrecht, ≤ 5.000 €, Antwort ohne Saldo). Fachfehler als `ToolError`, Änderungen nach `mcp_log` |
 | `OAuthService` | OAuth 2.1 für den MCP-Server: PKCE S256, erlaubte Rückruf-Hosts (claude.ai/claude.com/localhost), Bearer/Basic aus dem Header, Tokens nur gehasht; Abläufe im `OAuthController` |
 | `Migrator` | führt `database/migrations/*.sql` aus (auch automatisch beim ersten Seitenaufruf/Setup) |
 
@@ -125,9 +127,12 @@ Header `X-CSRF-Token`); `HB.post()` in `public/assets/js/app.js` setzt den Heade
 
 ## Status / mögliche nächste Schritte
 
-Alle geplanten Module sind umgesetzt und getestet (117 PHPUnit-Tests; Browser-Durchlauf Foto → lokale OCR → Speichern;
+Alle geplanten Module sind umgesetzt und getestet (147 PHPUnit-Tests; Browser-Durchlauf Foto → lokale OCR → Speichern;
 MCP/OAuth Ende-zu-Ende gegen eine DB-Kopie).
 Noch nicht real getestet: Kamera auf echtem Smartphone (braucht HTTPS), KI-Erkennung mit echtem API-Schlüssel,
 MCP-Konnektor mit echter Claude-App (braucht HTTPS-Server).
-Ideen: Budgets je Kategorie mit Warnung, Sparziele, Bearbeiten von CSV-Profilen in der Oberfläche,
+Kalender: Web und MCP gegen MariaDB-Testdatenbank durchgespielt; Screenshots `docs/anleitung/kalender*.png` mit
+Playwright/Chromium (Linux) erzeugt – `uebersicht*.png` und `prognose.png` zeigen die neue Terminkarte bzw. Budgets
+noch nicht (bei Gelegenheit mit `bin/screenshots.py` neu erzeugen).
+Ideen: Erinnerungen/ICS-Export für Termine, Budgets je Kategorie mit Warnung, Sparziele, Bearbeiten von CSV-Profilen in der Oberfläche,
 Konten-Export/Backup, E-Mail-Einladung für Familienmitglieder, Zwei-Faktor-Login.

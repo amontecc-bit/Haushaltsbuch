@@ -12,6 +12,8 @@
                     <li>Rezepte ansehen, anlegen, als gekocht verbuchen und fehlende Zutaten auf die Liste setzen</li>
                     <li>Virtuelle Posten anlegen, ändern, zusammenführen und echte Produkte zuordnen (Produkte nur mit Namen, ohne Preise)</li>
                     <li>Bargeld-Ausgaben buchen (nur auf Bargeld-Konten, für die man Buchungsrechte hat)</li>
+                    <li>Kalender: Termine ansehen, anlegen, ändern und löschen (eigene), Vorlagen nutzen, Teilnehmer einladen</li>
+                    <li>Kalender-Budgets nur, wenn du sie unten freigibst – gebucht wird dann nur auf Bargeld-Konten</li>
                 </ul>
                 <div class="alert alert-info small"><i class="bi bi-shield-lock"></i> Kontostände, Umsätze, Auswertungen, Preise und Kredite
                     sind über Claude nicht abrufbar. Was Claude ändert, steht unten im Protokoll.</div>
@@ -30,6 +32,19 @@
                 <?php elseif (!$enabled): ?>
                     <div class="alert alert-warning small">Der Zugang ist ausgeschaltet. Ein Administrator kann ihn hier einschalten.</div>
                 <?php endif; ?>
+
+                <form method="post" action="<?= e(url('/settings/claude/budgets')) ?>" class="border rounded p-2 mb-3">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="enabled" value="0">
+                    <div class="form-check form-switch mb-0">
+                        <input class="form-check-input" type="checkbox" role="switch" id="budgetsForClaude" name="enabled" value="1"
+                               <?= checked($budgetsForClaude) ?> onchange="this.form.submit()">
+                        <label class="form-check-label" for="budgetsForClaude"><strong>Meine Kalender-Budgets für Claude freigeben</strong></label>
+                        <div class="form-text">Persönliche Einstellung. Ein: Claude sieht deine Budgets an Terminen, kann sie setzen und auf deine
+                            Bargeld-Konten buchen. Aus: Claude verwaltet nur die Termine selbst.</div>
+                    </div>
+                    <noscript><button class="btn btn-sm btn-outline-primary mt-2">Speichern</button></noscript>
+                </form>
 
                 <?php if ($enabled): ?>
                     <h3 class="h6 mt-4">So verbindest du Claude</h3>

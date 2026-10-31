@@ -59,7 +59,7 @@ $hasBaseline = $result['baseline'] !== null;
 <div class="row g-3">
     <div class="col-lg-7">
         <div class="card">
-            <div class="card-header bg-transparent"><strong>Künftige feste Buchungen</strong></div>
+            <div class="card-header bg-transparent"><strong>Künftige feste Buchungen und Kalender-Budgets</strong></div>
             <div class="table-responsive" style="max-height: 480px">
                 <table class="table table-sm table-hover mb-0">
                     <thead class="sticky-top"><tr><th>Datum</th><th>Bezeichnung</th><th class="d-none d-sm-table-cell">Konto</th><th class="text-end">Betrag</th></tr></thead>
@@ -67,7 +67,12 @@ $hasBaseline = $result['baseline'] !== null;
                     <?php foreach (array_slice($result['events'], 0, 200) as $ev): ?>
                         <tr>
                             <td><?= e(date_de($ev['date'])) ?></td>
-                            <td><a class="text-body" href="<?= e(url("/recurring/{$ev['recurring_id']}/edit")) ?>"><?= e($ev['label']) ?></a></td>
+                            <td><?php if (($ev['kind'] ?? '') === 'budget'): ?>
+                                    <a class="text-body" href="<?= e(url("/calendar/{$ev['event_id']}", ['date' => $ev['occurrence']])) ?>"><i class="bi bi-calendar-event text-primary"></i> <?= e($ev['label']) ?></a>
+                                    <span class="small text-body-secondary">· <?= e($ev['user_name']) ?></span>
+                                <?php else: ?>
+                                    <a class="text-body" href="<?= e(url("/recurring/{$ev['recurring_id']}/edit")) ?>"><?= e($ev['label']) ?></a>
+                                <?php endif; ?></td>
                             <td class="d-none d-sm-table-cell small"><?= e($accountsById[$ev['account_id']]['name'] ?? '') ?></td>
                             <td class="table-amount <?= money_class($ev['amount']) ?>"><?= money($ev['amount']) ?></td>
                         </tr>
@@ -117,7 +122,7 @@ $hasBaseline = $result['baseline'] !== null;
                                         <td class="table-amount <?= money_class($c['avg']) ?>"><?= money($c['avg']) ?></td>
                                     </tr>
                                 <?php endforeach; ?>
-                                <?php foreach (['fixed' => 'Fixkosten (als Termine eingeplant)', 'pair' => 'Umbuchungen zw. eigenen Konten (erkannt)', 'category' => 'Ausgeklammerte Kategorien'] as $k => $label): ?>
+                                <?php foreach (['fixed' => 'Fixkosten (als Termine eingeplant)', 'calendar' => 'Kalender-Budgets (als Termine eingeplant)', 'pair' => 'Umbuchungen zw. eigenen Konten (erkannt)', 'category' => 'Ausgeklammerte Kategorien'] as $k => $label): ?>
                                     <?php if (abs($bd['excluded'][$k] ?? 0) >= 0.005): ?>
                                         <tr class="text-body-secondary"><td><i class="bi bi-slash-circle"></i> <?= e($label) ?> – nicht gezählt</td><td class="table-amount"><?= money($bd['excluded'][$k]) ?></td></tr>
                                     <?php endif; ?>

@@ -319,6 +319,40 @@ foreach ([
     $insert('mcp_log', ['household_id' => $hid, 'user_id' => $anna, 'client_name' => 'Claude', 'tool' => $tool, 'summary' => $summary,
         'created_at' => date('Y-m-d H:i:s', strtotime("-$min minutes"))]);
 }
+// Kalender: Vorlagen, Termine mit Vor-/Nachlauf und Teilnehmern, Budgets
+$mon = date('Y-m-d', strtotime('monday this week'));
+$day = static fn (int $offset, string $time = '') => trim(date('Y-m-d', strtotime("$mon +$offset days")) . ' ' . $time);
+$tplSwim = $insert('calendar_templates', ['household_id' => $hid, 'user_id' => $anna, 'name' => 'Schwimmtraining Lena', 'title' => 'Schwimmtraining',
+    'location' => 'Hallenbad Nord', 'duration_minutes' => 90, 'lead_minutes' => 20, 'trail_minutes' => 30, 'color' => '#1baf7a',
+    'budget_amount' => '4.50', 'budget_account_id' => $haushalt]);
+$insert('calendar_templates', ['household_id' => $hid, 'user_id' => $anna, 'name' => 'Wochenendausflug', 'duration_minutes' => 1740,
+    'lead_minutes' => 150, 'trail_minutes' => 150, 'color' => '#eda100', 'budget_amount' => '150.00', 'budget_account_id' => $giro]);
+$insert('calendar_templates', ['household_id' => $hid, 'user_id' => $anna, 'name' => 'Arzttermin', 'duration_minutes' => 45,
+    'lead_minutes' => 20, 'trail_minutes' => 20, 'color' => '#2a78d6']);
+$event = static function (int $owner, array $data, array $participants, array $budgets = []) use ($hid): int {
+    $id = \App\Services\CalendarService::save($hid, $owner, null, \App\Services\CalendarService::buildEvent($data), $participants);
+    foreach ($budgets as [$user, $amount, $account, $category]) {
+        (new \App\Repositories\CalendarRepository())->saveBudget($id, $user, $amount, $account, $category, null);
+    }
+    return $id;
+};
+$event($anna, ['title' => 'Schwimmtraining', 'location' => 'Hallenbad Nord', 'start' => $day(1, '17:00'), 'end' => $day(1, '18:30'),
+    'lead_minutes' => 20, 'trail_minutes' => 30, 'color' => '#1baf7a', 'recurrence' => 'weekly', 'template_id' => $tplSwim],
+    [$lena], [[$anna, '4.50', $haushalt, $cat('Sport')]]);
+$event($tom, ['title' => 'Elternabend 3b', 'location' => 'Grundschule', 'start' => $day(2, '19:30'), 'end' => $day(2, '21:00'),
+    'lead_minutes' => 15, 'trail_minutes' => 15, 'color' => '#7c5cc4'], [$anna]);
+$event($anna, ['title' => 'Zahnarzt Lena', 'start' => $day(3, '08:30'), 'end' => $day(3, '09:15'), 'lead_minutes' => 20,
+    'trail_minutes' => 20, 'color' => '#2a78d6'], [$lena]);
+$event($anna, ['title' => 'Kindergeburtstag Mia', 'location' => 'Trampolinhalle', 'start' => $day(5, '14:00'), 'end' => $day(5, '17:00'),
+    'lead_minutes' => 30, 'trail_minutes' => 30, 'color' => '#e87ba4', 'note' => 'Geschenk: Buch + Gutschein'],
+    [$lena], [[$anna, '25.00', $haushalt, $cat('Geschenke & Spenden')]]);
+$event($tom, ['title' => 'Wochenende im Harz', 'location' => 'Wernigerode', 'start' => $day(12, '10:00'), 'end' => $day(13, '15:00'),
+    'lead_minutes' => 150, 'trail_minutes' => 150, 'color' => '#eda100'], [$anna, $lena],
+    [[$tom, '120.00', $haushalt, $cat('Urlaub')], [$anna, '150.00', $giro, $cat('Urlaub')]]);
+$event($anna, ['title' => 'Sommerferien', 'all_day' => true, 'start' => date('Y-07-20', strtotime('+1 year')), 'end' => date('Y-08-02', strtotime('+1 year')),
+    'color' => '#0aa2c0'], [$tom, $lena]);
+$insert('user_preferences', ['user_id' => $anna, 'key' => 'account_calendar', 'value' => (string) $haushalt]);
+
 $db->exec("UPDATE users SET last_login_at = NOW() - INTERVAL id * 17 HOUR");
 
 RecurrenceService::linkExisting($hid, null, $today);

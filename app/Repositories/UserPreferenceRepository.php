@@ -12,6 +12,7 @@ final class UserPreferenceRepository extends Repository
         'account_import'   => 'Kontoauszug importieren – auf Konto',
         'account_booking'  => 'Neue Buchung – Konto',
         'account_transfer' => 'Umbuchung – Zielkonto',
+        'account_calendar' => 'Kalender-Budget – Konto',
     ];
 
     public function all(int $userId): array

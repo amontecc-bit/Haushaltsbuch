@@ -1,4 +1,5 @@
 <div class="more-grid mb-4">
+    <a href="<?= e(url('/calendar')) ?>"><i class="bi bi-calendar3"></i>Kalender</a>
     <a href="<?= e(url('/shopping')) ?>"><i class="bi bi-card-checklist"></i>Einkaufsliste</a>
     <a href="<?= e(url('/inventory')) ?>"><i class="bi bi-box-seam"></i>Vorrat</a>
     <a href="<?= e(url('/recipes')) ?>"><i class="bi bi-journal-richtext"></i>Rezepte</a>
