@@ -92,7 +92,9 @@ final class PurchaseController extends Controller
             $byCat[$key]['total'] += (float) $i['total_price'];
         }
         uasort($byCat, fn ($a, $b) => $b['total'] <=> $a['total']);
-        $actions = '<a class="btn btn-outline-primary" href="' . e(url("/purchases/$id/edit")) . '"><i class="bi bi-pencil"></i> Bearbeiten</a>';
+        $actions = $this->canChange($p)
+            ? '<a class="btn btn-outline-primary" href="' . e(url("/purchases/$id/edit")) . '"><i class="bi bi-pencil"></i> Bearbeiten</a>'
+            : '';
         $this->view('purchases/show', [
             'title' => ($p['store'] ?: 'Einkauf') . ' · ' . date_de($p['purchase_date']), 'back' => '/purchases',
             'p' => $p, 'items' => $items, 'byCat' => $byCat, 'files' => $this->files($p), 'actions' => $actions,
@@ -103,14 +105,37 @@ final class PurchaseController extends Controller
     {
         $repo = new PurchaseRepository();
         $p = $repo->find($id, $this->hid, Auth::accountIds('view')) ?? $this->notFound();
+        if (!$this->canChange($p)) {
+            $this->redirect("/purchases/$id", 'Keine Berechtigung, Einkäufe dieses Kontos zu ändern.', 'danger');
+        }
         $this->renderForm($p, $repo->items($id), 'manual', 'Einkauf bearbeiten');
+    }
+
+    /** Ändern/Löschen: Einkauf ohne Konto (gehört dem Haushalt) oder Buchungsrecht auf sein Konto */
+    private function canChange(array $p): bool
+    {
+        return !$p['account_id'] || Auth::can((int) $p['account_id'], 'book');
     }
 
     public function update(int $id): void
     {
         $repo = new PurchaseRepository();
         $old = $repo->find($id, $this->hid, Auth::accountIds('view')) ?? $this->json(['error' => 'Nicht gefunden'], 404);
+        // Ändern wie Löschen nur mit Buchungsrecht auf das bisherige und das neue Konto (Ansehen allein reicht nicht)
+        if (!$this->canChange($old)) {
+            $this->json(['error' => 'Keine Berechtigung, Einkäufe dieses Kontos zu ändern.'], 403);
+        }
         [$data, $items, $error] = $this->validated();
+        if (!$error && $data['account_id'] && !Auth::can((int) $data['account_id'], 'book')) {
+            $error = 'Keine Berechtigung für dieses Konto.';
+        }
+        // link=new überschreibt eine bereits aus dem Einkauf erzeugte Buchung – auch dafür ist Buchungsrecht nötig
+        if (!$error && $this->request->str('link') === 'new' && $old['transaction_id']) {
+            $existing = (new TransactionRepository())->find((int) $old['transaction_id'], $this->hid);
+            if ($existing && $existing['source'] === 'purchase' && !Auth::can((int) $existing['account_id'], 'book')) {
+                $error = 'Die verknüpfte Buchung liegt auf einem Konto, auf das du nicht buchen darfst.';
+            }
+        }
         if ($error) {
             $this->json(['error' => $error], 422);
         }
@@ -128,7 +153,7 @@ final class PurchaseController extends Controller
     {
         $repo = new PurchaseRepository();
         $p = $repo->find($id, $this->hid, Auth::accountIds('view')) ?? $this->notFound();
-        if ($p['account_id'] && !Auth::can((int) $p['account_id'], 'book')) {
+        if (!$this->canChange($p)) {
             $this->redirect("/purchases/$id", 'Keine Berechtigung.', 'danger');
         }
         if ($this->request->bool('delete_transaction') && $p['transaction_id']) {

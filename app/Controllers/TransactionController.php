@@ -166,6 +166,7 @@ final class TransactionController extends Controller
         $repo = new TransactionRepository();
         $tx = $repo->find($id, $this->hid) ?? $this->notFound();
         Auth::authorize((int) $tx['account_id'], 'book');
+        $this->authorizePartner($repo, $tx);
         [$data, $error] = $this->validated();
         $data['id'] = $id;
         if ($error) {
@@ -242,6 +243,7 @@ final class TransactionController extends Controller
         $repo = new TransactionRepository();
         $tx = $repo->find($id, $this->hid) ?? $this->notFound();
         Auth::authorize((int) $tx['account_id'], 'book');
+        $this->authorizePartner($repo, $tx);
         if ($tx['transfer_group']) {
             $repo->deleteTransferGroup($tx['transfer_group'], $this->hid);
         } else {
@@ -286,6 +288,9 @@ final class TransactionController extends Controller
                 continue;
             }
             if ($action === 'delete') {
+                if (!$this->partnerBookable($repo, $tx)) {
+                    continue; // Umbuchung, deren Gegenseite auf einem fremden Konto liegt
+                }
                 $tx['transfer_group'] ? $repo->deleteTransferGroup($tx['transfer_group'], $this->hid) : $repo->delete($id, $this->hid);
             } elseif ($action === 'move') {
                 // Bei Umbuchungen nur diese Seite verschieben – nie auf das Konto der Gegenseite
@@ -386,6 +391,24 @@ final class TransactionController extends Controller
     {
         $s = (new CategorizationService($this->hid))->suggestForTransaction($this->request->str('payee'), $this->request->str('purpose'));
         $this->json($s);
+    }
+
+    /**
+     * Umbuchungen werden immer mit beiden Seiten gelöscht bzw. neu aufgebaut – dafür muss der Benutzer auch auf das
+     * Konto der Gegenseite buchen dürfen (wie beim Anlegen einer Umbuchung).
+     */
+    private function partnerBookable(TransactionRepository $repo, array $tx): bool
+    {
+        $partner = $repo->transferPartner($tx);
+        return !$partner || Auth::can((int) $partner['account_id'], 'book');
+    }
+
+    private function authorizePartner(TransactionRepository $repo, array $tx): void
+    {
+        if (!$this->partnerBookable($repo, $tx)) {
+            $this->redirect("/transactions/{$tx['id']}/edit",
+                'Diese Umbuchung betrifft ein Konto, auf das du nicht buchen darfst. Bitte einen Administrator fragen.', 'danger');
+        }
     }
 
     private function validated(): array
