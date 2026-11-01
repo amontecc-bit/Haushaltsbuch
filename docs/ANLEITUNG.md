@@ -531,16 +531,21 @@ angelegt hast, und alle, zu denen dich jemand als **Teilnehmer** eingetragen hat
   tragen ein Personen-Symbol mit Haken; in der Liste steht dazu „Teilnehmer · von …“.
 - **Vorlauf** (z. B. Anreise) und **Nachlauf** (z. B. Abreise) gehören zum Termin, erscheinen aber **schraffiert und
   gestrichelt** direkt davor bzw. danach – so siehst du sofort, wann du wirklich losmusst und wann du wieder zurück bist.
-- Oben wechselst du zwischen **Monat**, **Woche** und **Liste**; mit dem Auswahlfeld siehst du auch den Kalender eines
-  anderen Familienmitglieds (Budgets anderer bleiben dabei verborgen).
-- Ein Klick auf eine Tageszahl legt dort einen neuen Termin an, ein Klick auf einen Termin öffnet seine Details.
+- Oben wechselst du zwischen **Tag**, **Woche**, **Monat** und **Liste**; mit dem Auswahlfeld siehst du auch den Kalender
+  eines anderen Familienmitglieds (Budgets anderer bleiben dabei verborgen).
+- In **Tag** und **Woche** stehen die Termine auf einer Zeitleiste: Ein Termin ist **so hoch, wie er dauert**, Vor- und
+  Nachlauf schließen direkt darüber bzw. darunter an. Termine, die sich **überschneiden**, stehen **nebeneinander** –
+  so siehst du sofort, wo es eng wird. Ganztägige Termine stehen in einer eigenen Zeile oben, die rote Linie ist „jetzt“.
+  Ein Klick in eine freie Stunde legt dort einen neuen Termin an.
+- Im **Monat** öffnet ein Klick auf die Tageszahl (oder in der Woche auf den Wochentag) die Tagesansicht; das **+**, das
+  beim Überfahren eines Tages erscheint, legt dort einen neuen Termin an. Ein Klick auf einen Termin öffnet seine Details.
 - Von den Details, den Vorlagen und den Formularen führt der Pfeil **‹** links neben der Überschrift (bzw. oben in der
   Kopfzeile am Handy) oder **Zum Kalender** zurück – und zwar in die zuletzt gewählte Ansicht (Monat, Woche, Liste,
   Kalender eines anderen Mitglieds), beim Termin direkt an dessen Tag.
 
 ![Woche](anleitung/kalender-woche.png)
 
-Auf dem Handy zeigt der Kalender die Termine als Liste, Vor- und Nachlauf eingerückt:
+Auf dem Handy zeigt der Kalender Monat und Woche als Liste (Vor- und Nachlauf eingerückt), die Tagesansicht als Zeitleiste:
 
 <img src="anleitung/kalender-mobil.png" alt="Kalender auf dem Handy" width="260">
 

@@ -1,8 +1,9 @@
 <?php
 /**
  * Ein Abschnitt eines Termins im Kalender.
- * Variablen: $o (Vorkommen aus CalendarService::forUser), $s (Abschnitt aus segments()), $mode 'chip' | 'row',
- *            $range (Chip mit Zeitspanne statt nur Beginn, z. B. Wochenansicht)
+ * Variablen: $o (Vorkommen aus CalendarService::forUser), $s (Abschnitt aus segments()), $mode 'chip' | 'row' | 'block',
+ *            $range (Chip mit Zeitspanne statt nur Beginn, z. B. Wochenansicht),
+ *            $pos (nur 'block': CSS für Lage und Größe im Zeitraster)
  */
 use App\Services\CalendarService;
 
@@ -25,7 +26,20 @@ $classes = 'cal-' . $kind . ($isOwner ? ' cal-owner' : ' cal-participant');
 $style = '--c: ' . $ev['color'] . '; --fg: ' . CalendarService::textColor($ev['color']);
 $href = url('/calendar/' . $ev['id'], ['date' => $o['date']]);
 ?>
-<?php if ($mode === 'chip'): ?>
+<?php if ($mode === 'block'): ?>
+<?php // Kurze Termine (< 1 h): nur der Titel – die Zeit zeigen Lage im Raster und Tooltip
+$short = $kind === 'main' && isset($s['start'], $s['end']) && $s['end'] - $s['start'] < 60; ?>
+<a class="cal-ev <?= e($classes) ?><?= $short ? ' cal-ev-short' : '' ?>" style="<?= e($style . '; ' . $pos) ?>" href="<?= e($href) ?>" title="<?= e($tooltip) ?>">
+    <?php if ($kind !== 'main'): ?>
+        <span class="cal-ev-time"><i class="bi bi-<?= $kindIcon ?>"></i> <?= e($kindLabel) ?></span>
+    <?php else: ?>
+        <span class="cal-ev-time"><?php if (!$isOwner): ?><i class="bi bi-person-check" aria-label="Teilnehmer"></i> <?php endif; ?><?= e($time) ?>
+            <?php if ($budgetText): ?><i class="bi bi-<?= $o['booking'] ? 'check2-circle' : 'wallet2' ?>" aria-label="<?= e($budgetText) ?>"></i><?php endif; ?></span>
+        <span class="cal-ev-title"><?= e($ev['title']) ?></span>
+        <?php if ($ev['location']): ?><span class="cal-ev-loc"><?= e($ev['location']) ?></span><?php endif; ?>
+    <?php endif; ?>
+</a>
+<?php elseif ($mode === 'chip'): ?>
 <a class="cal-chip <?= e($classes) ?>" style="<?= e($style) ?>" href="<?= e($href) ?>" title="<?= e($tooltip) ?>">
     <?php if ($kind !== 'main'): ?>
         <i class="bi bi-<?= $kindIcon ?>"></i> <?= e($kindLabel) ?><?= $s['all_day'] ? '' : ' ' . e($range ? $time : $s['from']) ?>

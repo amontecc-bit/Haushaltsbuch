@@ -69,7 +69,7 @@ Header `X-CSRF-Token`); `HB.post()` in `public/assets/js/app.js` setzt den Heade
 | `ShoppingListService` | Einkaufsliste: `match()` gleicht offene Einträge mit den Posten eines Einkaufs ab (zugeordnete Produkte des virtuellen Postens, sonst exakt gleicher normalisierter Name → Produkt wird gelernt); `matchPurchase()` läuft nach jedem Speichern eines Einkaufs (nur Einträge, die bis zum Einkaufstag angelegt wurden) |
 | `InventoryService` | Vorrat je virtuellem Posten in Referenzeinheiten: Einheiten (`toRef`), Faktor aus dem Produktnamen (`guessFactor`), Chargen je Einkauf (`syncPurchase`, stabil über purchase_id+product_id), FIFO-Verbrauch, Korrektur, `refreshAutoList()` (Liste „Automatisch“) |
 | `RecipeService` | Rezept gegen Vorrat (`evaluate`, Portionen skaliert, Grundvorrat), Sortierung der Vorschläge (`rank`); DB-Teil gemeinsam für Web und MCP: `ingredientRows` (Zutaten prüfen/anlegen), `cook`, `addMissingToList`, `evaluateAll`, `card` |
-| `CalendarService` | Kalender: `occurrences()` (Wiederholung, Clamping, Ausnahmen), `instance()`/`segments()` (Vor-/Nachlauf tageweise, Ende exklusiv), `parseDuration()`, `applyTemplate()`, `buildEvent()` (Prüfung für Web und MCP), `forUser()`, `save()`, `bookBudget()` (`source = 'calendar'`); Rechte: ändern nur Ersteller/Admin, Budget nur der Teilnehmer selbst |
+| `CalendarService` | Kalender: `occurrences()` (Wiederholung, Clamping, Ausnahmen), `instance()`/`segments()` (Vor-/Nachlauf tageweise, Ende exklusiv), `columns()`/`dayLayout()` (Zeitraster Tag/Woche: gleichzeitige Termine nebeneinander, Vor-/Nachlauf in der Spalte des Termins; Partial `calendar/timegrid.php`), `parseDuration()`, `applyTemplate()`, `buildEvent()` (Prüfung für Web und MCP), `forUser()`, `save()`, `bookBudget()` (`source = 'calendar'`); Rechte: ändern nur Ersteller/Admin, Budget nur der Teilnehmer selbst |
 | `Mcp\McpServer` / `Mcp\McpTools` + `Mcp\ItemTools` + `Mcp\CalendarTools` | MCP-Protokoll (JSON-RPC, zustandslos, reine Klasse) bzw. die 30 Tools für Claude (+2 Budget-Tools nur mit persönlicher Freigabe `user_preferences.mcp_calendar_budgets`; Basis `Mcp\ToolSet`; `ItemTools` = virtuelle Posten, Produkt-Zuordnung, `merge_items`; `CalendarTools` = Termine, Vorlagen, Budgets). **Keine Finanzdaten** ausgeben (keine Preise, Geschäfte, Einkäufe, Salden, Umsätze); einzige Ausnahmen `book_cash_expense` und `book_event_budget` (nur `cash`-Konten mit Buchungsrecht, ≤ 5.000 €, Antwort ohne Saldo). Fachfehler als `ToolError`, Änderungen nach `mcp_log` |
 | `OAuthService` | OAuth 2.1 für den MCP-Server: PKCE S256, erlaubte Rückruf-Hosts (claude.ai/claude.com/localhost), Bearer/Basic aus dem Header, Tokens nur gehasht; Abläufe im `OAuthController` |
 | `Migrator` | führt `database/migrations/*.sql` aus (auch automatisch beim ersten Seitenaufruf/Setup) |
@@ -127,13 +127,13 @@ Header `X-CSRF-Token`); `HB.post()` in `public/assets/js/app.js` setzt den Heade
 
 ## Status / mögliche nächste Schritte
 
-Alle geplanten Module sind umgesetzt und getestet (147 PHPUnit-Tests; Browser-Durchlauf Foto → lokale OCR → Speichern;
+Alle geplanten Module sind umgesetzt und getestet (150 PHPUnit-Tests; Browser-Durchlauf Foto → lokale OCR → Speichern;
 MCP/OAuth Ende-zu-Ende gegen eine DB-Kopie).
 Noch nicht real getestet: Kamera auf echtem Smartphone (braucht HTTPS), KI-Erkennung mit echtem API-Schlüssel,
 MCP-Konnektor mit echter Claude-App (braucht HTTPS-Server).
 Kalender: Web und MCP gegen MariaDB-Testdatenbank durchgespielt; Screenshots `docs/anleitung/kalender*.png` mit
 Playwright/Chromium (Linux) erzeugt – `uebersicht*.png` und `prognose.png` zeigen die neue Terminkarte bzw. Budgets
-noch nicht, `kalender-termin.png` noch die alte Budgetkarte ohne Stift/X (bei Gelegenheit mit `bin/screenshots.py` neu erzeugen).
+noch nicht, `kalender-woche.png` noch die alte Wochenansicht ohne Zeitraster, `kalender-termin.png` noch die alte Budgetkarte ohne Stift/X (bei Gelegenheit mit `bin/screenshots.py` neu erzeugen).
 Navigation: `$back` erscheint auch am Desktop als Pfeil links neben der Überschrift; der Kalender merkt sich die
 zuletzt genutzte Ansicht in der Sitzung (`calendar_view`), Zurück-Links laufen über `CalendarController::calendarUrl()`.
 Ideen: Erinnerungen/ICS-Export für Termine, Budgets je Kategorie mit Warnung, Sparziele, Bearbeiten von CSV-Profilen in der Oberfläche,
