@@ -128,6 +128,38 @@ final class CalendarServiceTest extends TestCase
         self::assertSame(1440, end($l['timed'])['end']);
     }
 
+    public function testMoveChangesSingleEvent(): void
+    {
+        $c = CalendarService::moveChanges(self::event(), '2026-11-02', '2026-11-03 17:15', '2026-11-03 19:00', 20, 45);
+        self::assertSame(['start_at' => '2026-11-03 17:15:00', 'end_at' => '2026-11-03 19:00:00', 'lead_minutes' => 20, 'trail_minutes' => 45], $c['data']);
+        self::assertSame(1, $c['days']);
+    }
+
+    public function testMoveChangesShiftsSeriesFromLaterOccurrence(): void
+    {
+        // Wöchentliche Serie ab 02.11., Vorkommen 16.11. um einen Tag nach vorn und 30 Min. früher
+        $e = self::event(['recurrence' => 'weekly', 'recurrence_until' => '2026-12-28']);
+        $c = CalendarService::moveChanges($e, '2026-11-16', '2026-11-15 17:30', '2026-11-15 19:00', 0, 0);
+        self::assertSame('2026-11-01 17:30:00', $c['data']['start_at']);
+        self::assertSame('2026-11-01 19:00:00', $c['data']['end_at']);
+        self::assertSame('2026-12-27', $c['data']['recurrence_until']);
+        self::assertSame(-1, $c['days']);
+    }
+
+    public function testMoveChangesRejectsInvalid(): void
+    {
+        foreach ([['2026-11-02 19:00', '2026-11-02 18:00', 0], ['2026-11-02 25:00', '2026-11-02 26:00', 0], ['2026-11-02 18:00', '2026-11-02 19:00', -5]] as [$a, $b, $lead]) {
+            try {
+                CalendarService::moveChanges(self::event(), '2026-11-02', $a, $b, $lead, 0);
+                self::fail('keine Ausnahme für ' . $a);
+            } catch (\InvalidArgumentException) {
+                self::addToAssertionCount(1);
+            }
+        }
+        $this->expectException(\InvalidArgumentException::class);
+        CalendarService::moveChanges(self::event(['all_day' => 1]), '2026-11-02', '2026-11-02 10:00', '2026-11-02 11:00', 0, 0);
+    }
+
     public function testInstancesTouchingFindsTrailOfPreviousDay(): void
     {
         $e = self::event(['start_at' => '2026-11-02 22:00:00', 'end_at' => '2026-11-02 23:00:00', 'trail_minutes' => 120]);

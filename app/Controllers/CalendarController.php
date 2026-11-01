@@ -94,6 +94,7 @@ final class CalendarController extends Controller
             'prev'        => $base + $prev,
             'next'        => $base + $next,
             'heading'     => $heading,
+            'scripts'     => ['js/calendar.js'],
             'occurrences' => $occurrences,
             'byDay'       => $byDay,
             'members'     => $members,
@@ -210,6 +211,34 @@ final class CalendarController extends Controller
         }
         $this->repo->delete($id, $this->hid);
         $this->redirect($this->calendarUrl($date ?? substr($event['start_at'], 0, 10)), 'Termin gelöscht.');
+    }
+
+    /**
+     * Verschieben/Länge ändern per Ziehen im Zeitraster (JSON): date = bisheriges Vorkommen, start/end 'Y-m-d H:i',
+     * lead/trail in Minuten, scope 'one' (nur dieses Vorkommen einer Serie) oder 'series'.
+     */
+    public function move(int $id): void
+    {
+        $event = $this->repo->find($id, $this->hid);
+        if (!$event) {
+            $this->json(['error' => 'Termin nicht gefunden.'], 404);
+        }
+        if (!CalendarService::canEdit($event, Auth::id(), Auth::isAdmin())) {
+            $this->json(['error' => 'Nur wer den Termin angelegt hat, kann ihn verschieben.'], 403);
+        }
+        $r = $this->request;
+        $date = valid_date($r->str('date'));
+        $exceptions = $this->repo->exceptionsFor([$id])[$id] ?? [];
+        if ($date === null || !CalendarService::occurrences($event, $date, $date, $exceptions)) {
+            $this->json(['error' => 'Diesen Termin gibt es an dem Tag nicht.'], 422);
+        }
+        try {
+            $newId = CalendarService::move($this->hid, $event, $date, $r->str('start'), $r->str('end'),
+                (int) $r->int('lead', 0), (int) $r->int('trail', 0), $r->str('scope') === 'one');
+        } catch (\InvalidArgumentException $e) {
+            $this->json(['error' => $e->getMessage()], 422);
+        }
+        $this->json(['ok' => true, 'id' => $newId]);
     }
 
     /** Eigenes Budget setzen (Teilnehmer); leerer Betrag entfernt es */

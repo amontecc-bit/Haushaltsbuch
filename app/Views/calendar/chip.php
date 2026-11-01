@@ -3,7 +3,8 @@
  * Ein Abschnitt eines Termins im Kalender.
  * Variablen: $o (Vorkommen aus CalendarService::forUser), $s (Abschnitt aus segments()), $mode 'chip' | 'row' | 'block',
  *            $range (Chip mit Zeitspanne statt nur Beginn, z. B. Wochenansicht),
- *            $pos (nur 'block': CSS für Lage und Größe im Zeitraster)
+ *            $pos (nur 'block': CSS für Lage und Größe im Zeitraster),
+ *            $drag (nur 'block': Daten fürs Ziehen oder null – dann ohne Griffe)
  */
 use App\Services\CalendarService;
 
@@ -29,7 +30,18 @@ $href = url('/calendar/' . $ev['id'], ['date' => $o['date']]);
 <?php if ($mode === 'block'): ?>
 <?php // Kurze Termine (< 1 h): nur der Titel – die Zeit zeigen Lage im Raster und Tooltip
 $short = $kind === 'main' && isset($s['start'], $s['end']) && $s['end'] - $s['start'] < 60; ?>
-<a class="cal-ev <?= e($classes) ?><?= $short ? ' cal-ev-short' : '' ?>" style="<?= e($style . '; ' . $pos) ?>" href="<?= e($href) ?>" title="<?= e($tooltip) ?>">
+<?php $drag ??= null; ?>
+<a class="cal-ev <?= e($classes) ?><?= $short ? ' cal-ev-short' : '' ?><?= $drag ? ' cal-ev-drag' : '' ?>" style="<?= e($style . '; ' . $pos) ?>" href="<?= e($href) ?>" title="<?= e($tooltip) ?>"
+   <?php if ($drag): ?>data-kind="<?= e($kind) ?>" data-drag="<?= e(json_encode($drag)) ?>" draggable="false"<?php endif; ?>>
+    <?php if ($drag): ?>
+        <?php if ($kind === 'main'): ?>
+            <span class="cal-h cal-h-top" data-h="start" title="Beginn ziehen"></span><span class="cal-h cal-h-bottom" data-h="end" title="Ende ziehen"></span>
+        <?php elseif ($kind === 'lead'): ?>
+            <span class="cal-h cal-h-top" data-h="lead" title="Vorlauf ziehen"></span>
+        <?php else: ?>
+            <span class="cal-h cal-h-bottom" data-h="trail" title="Nachlauf ziehen"></span>
+        <?php endif; ?>
+    <?php endif; ?>
     <?php if ($kind !== 'main'): ?>
         <span class="cal-ev-time"><i class="bi bi-<?= $kindIcon ?>"></i> <?= e($kindLabel) ?></span>
     <?php else: ?>

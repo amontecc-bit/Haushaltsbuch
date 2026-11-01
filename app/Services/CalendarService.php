@@ -8,6 +8,7 @@ use App\Core\Auth;
 use App\Core\Money;
 use App\Repositories\CalendarRepository;
 use DateTimeImmutable;
+use InvalidArgumentException;
 use RuntimeException;
 
 /**
@@ -527,6 +528,85 @@ final class CalendarService
             // Budgets von entfernten Teilnehmern bleiben nur, wenn schon gebucht wurde
             $repo->deleteOrphanBudgets($eventId, $ids);
             return $eventId;
+        });
+    }
+
+    /**
+     * Neue Lage eines Vorkommens (Ziehen im Zeitraster) in Spalten für den Termin umrechnen.
+     * Bei Serien wird die ganze Serie um denselben Abstand verschoben (Beginn, ggf. Wiederholungsende).
+     * @param string $start/$end neue Zeiten des Vorkommens 'Y-m-d H:i'
+     * @return array{data: array, days: int} Spalten für calendar_events, Verschiebung in Tagen
+     * @throws InvalidArgumentException
+     */
+    public static function moveChanges(array $event, string $occurrence, string $start, string $end, int $lead, int $trail): array
+    {
+        $parse = function (string $v): DateTimeImmutable {
+            $d = DateTimeImmutable::createFromFormat('!Y-m-d H:i', $v);
+            if (!$d || $d->format('Y-m-d H:i') !== $v) {
+                throw new InvalidArgumentException('Ungültige Zeitangabe.');
+            }
+            return $d;
+        };
+        $newStart = $parse($start);
+        $newEnd = $parse($end);
+        $duration = $newEnd->getTimestamp() - $newStart->getTimestamp();
+        if ($event['all_day']) {
+            throw new InvalidArgumentException('Ganztägige Termine lassen sich hier nicht verschieben.');
+        }
+        if ($duration <= 0) {
+            throw new InvalidArgumentException('Das Ende muss nach dem Beginn liegen.');
+        }
+        if ($duration > self::MAX_MINUTES * 60 * 12 || $lead < 0 || $trail < 0 || $lead > self::MAX_MINUTES || $trail > self::MAX_MINUTES) {
+            throw new InvalidArgumentException('Dauer, Vor- oder Nachlauf ist zu lang.');
+        }
+        $old = self::instance($event, $occurrence);
+        $delta = $newStart->getTimestamp() - (new DateTimeImmutable($old['start']))->getTimestamp();
+        $days = (int) round(((new DateTimeImmutable($newStart->format('Y-m-d')))->getTimestamp() - (new DateTimeImmutable($occurrence))->getTimestamp()) / 86400);
+        $seriesStart = (new DateTimeImmutable($event['start_at']))->modify(($delta >= 0 ? '+' : '') . $delta . ' seconds');
+        $data = [
+            'start_at'      => $seriesStart->format('Y-m-d H:i:s'),
+            'end_at'        => $seriesStart->modify('+' . $duration . ' seconds')->format('Y-m-d H:i:s'),
+            'lead_minutes'  => $lead,
+            'trail_minutes' => $trail,
+        ];
+        if (($event['recurrence'] ?? 'none') !== 'none' && !empty($event['recurrence_until']) && $days !== 0) {
+            $data['recurrence_until'] = (new DateTimeImmutable($event['recurrence_until']))->modify(($days > 0 ? '+' : '') . $days . ' days')->format('Y-m-d');
+        }
+        return ['data' => $data, 'days' => $days];
+    }
+
+    /**
+     * Vorkommen verschieben/in der Länge ändern. $onlyThis bei Serien: das Vorkommen wird als eigener Termin
+     * abgelöst (Ausnahme in der Serie, Teilnehmer und Budgets kopiert, gebuchte Budgets wandern mit).
+     * @return int ID des geänderten bzw. neuen Termins
+     */
+    public static function move(int $hid, array $event, string $occurrence, string $start, string $end, int $lead, int $trail, bool $onlyThis): int
+    {
+        $change = self::moveChanges($event, $occurrence, $start, $end, $lead, $trail);
+        $newDate = substr($start, 0, 10);
+        $repo = new CalendarRepository();
+        $id = (int) $event['id'];
+        return $repo->transaction(function () use ($repo, $hid, $event, $id, $occurrence, $start, $end, $lead, $trail, $onlyThis, $change, $newDate) {
+            if ($event['recurrence'] === 'none') {
+                $repo->update($id, $hid, $change['data']);
+                $repo->moveBookings($id, $occurrence, $newDate);
+                return $id;
+            }
+            if (!$onlyThis) {
+                $repo->update($id, $hid, $change['data']);
+                $repo->shiftOccurrenceDates($id, $change['days']);
+                return $id;
+            }
+            $repo->addException($id, $occurrence);
+            $copy = array_intersect_key($event, array_flip(CalendarRepository::EVENT_FIELDS));
+            $newId = $repo->create($hid, [
+                'start_at' => $start . ':00', 'end_at' => $end . ':00', 'lead_minutes' => $lead, 'trail_minutes' => $trail,
+                'recurrence' => 'none', 'recurrence_interval' => 1, 'recurrence_until' => null, 'created_by' => $event['created_by'],
+            ] + $copy);
+            $repo->setParticipants($newId, array_column($repo->participantsFor([$id])[$id] ?? [], 'id'));
+            $repo->copyBudgets($id, $newId);
+            $repo->moveBookings($id, $occurrence, $newDate, $newId);
+            return $newId;
         });
     }
 
