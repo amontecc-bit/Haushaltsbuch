@@ -161,6 +161,87 @@ final class CalendarService
         return $out;
     }
 
+    /** 'H:i' (auch '24:00') in Minuten seit Mitternacht */
+    public static function minutes(string $hm): int
+    {
+        [$h, $m] = array_map('intval', explode(':', $hm) + [0, 0]);
+        return $h * 60 + $m;
+    }
+
+    /**
+     * Spalten für gleichzeitige Termine (Zeitraster): Intervalle, die sich überschneiden, bilden eine Gruppe und
+     * stehen nebeneinander. Jeder Eintrag bekommt die erste freie Spalte; alle in der Gruppe die gleiche Spaltenzahl.
+     * Berührt ein Termin den nächsten nur (Ende = Beginn), gilt das nicht als Überschneidung.
+     * @param array<int|string, array{0:int, 1:int}> $intervals Schlüssel => [Beginn, Ende] in Minuten
+     * @return array<int|string, array{col:int, cols:int}>
+     */
+    public static function columns(array $intervals): array
+    {
+        uasort($intervals, fn ($a, $b) => [$a[0], $b[1]] <=> [$b[0], $a[1]]);
+        $out = [];
+        $group = [];      // Schlüssel der laufenden Gruppe
+        $colEnds = [];    // Ende je Spalte in der laufenden Gruppe
+        $groupEnd = -1;
+        $close = function () use (&$out, &$group, &$colEnds) {
+            foreach ($group as $k) {
+                $out[$k]['cols'] = count($colEnds);
+            }
+            $group = [];
+            $colEnds = [];
+        };
+        foreach ($intervals as $key => [$start, $end]) {
+            $end = max($end, $start + 1);
+            if ($start >= $groupEnd) {
+                $close();
+            }
+            $col = null;
+            foreach ($colEnds as $i => $colEnd) {
+                if ($colEnd <= $start) {
+                    $col = $i;
+                    break;
+                }
+            }
+            $col ??= count($colEnds);
+            $colEnds[$col] = $end;
+            $out[$key] = ['col' => $col, 'cols' => 0];
+            $group[] = $key;
+            $groupEnd = max($groupEnd, $end);
+        }
+        $close();
+        return $out;
+    }
+
+    /**
+     * Abschnitte eines Tages fürs Zeitraster: ganztägige getrennt, die übrigen mit Minuten und Spalte. Vor-/Nachlauf
+     * gehören zum Termin und teilen sich seine Spalte (man ist in der Zeit ja unterwegs).
+     * @param array<int, array{kind:string, from:string, to:string, all_day:bool, idx:int}> $segs
+     * @return array{all_day: array, timed: array}
+     */
+    public static function dayLayout(array $segs): array
+    {
+        $allDay = [];
+        $timed = [];
+        $spans = [];
+        foreach ($segs as $s) {
+            if ($s['all_day']) {
+                $allDay[] = $s;
+                continue;
+            }
+            $s['start'] = self::minutes($s['from']);
+            $s['end'] = self::minutes($s['to']);
+            $timed[] = $s;
+            $i = $s['idx'];
+            $spans[$i] = isset($spans[$i]) ? [min($spans[$i][0], $s['start']), max($spans[$i][1], $s['end'])] : [$s['start'], $s['end']];
+        }
+        $cols = self::columns($spans);
+        foreach ($timed as &$s) {
+            $s += $cols[$s['idx']];
+        }
+        unset($s);
+        usort($timed, fn ($a, $b) => [$a['start'], $a['col']] <=> [$b['start'], $b['col']]);
+        return ['all_day' => $allDay, 'timed' => $timed];
+    }
+
     /**
      * Dauer aus Benutzereingabe in Minuten: „90“, „1:30“, „2 h“, „1,5 Std“, „45 min“, „1 Tag“, „2 Tage 3 h“.
      * Leer = 0, ungültig = null.

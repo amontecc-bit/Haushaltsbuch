@@ -20,7 +20,7 @@ use DateTimeImmutable;
  */
 final class CalendarController extends Controller
 {
-    private const VIEWS = ['month', 'week', 'list'];
+    private const VIEWS = ['month', 'week', 'day', 'list'];
 
     private CalendarRepository $repo;
 
@@ -49,6 +49,8 @@ final class CalendarController extends Controller
                 return [$mon->format('Y-m-d'), $sun->format('Y-m-d'), ['date' => $mon->modify('-7 days')->format('Y-m-d')],
                         ['date' => $mon->modify('+7 days')->format('Y-m-d')], 'KW ' . $mon->format('W') . ' · ' . date_de($mon->format('Y-m-d')) . ' – ' . date_de($sun->format('Y-m-d'))];
             })(),
+            'day' => [$date, $date, ['date' => $d->modify('-1 day')->format('Y-m-d')], ['date' => $d->modify('+1 day')->format('Y-m-d')],
+                      ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'][(int) $d->format('N') - 1] . ', ' . date_de($date)],
             'list' => [$date, $d->modify('+60 days')->format('Y-m-d'), ['date' => $d->modify('-60 days')->format('Y-m-d')],
                        ['date' => $d->modify('+60 days')->format('Y-m-d')], 'Ab ' . date_de($date)],
             default => (function () use ($month) {
@@ -146,7 +148,9 @@ final class CalendarController extends Controller
     public function create(): void
     {
         $date = valid_date($this->request->str('date'), date('Y-m-d'));
-        $start = $date . ' ' . (date('Y-m-d') === $date ? date('H', strtotime('+1 hour')) . ':00' : '10:00');
+        // Uhrzeit aus dem Zeitraster (Klick in eine Stunde), sonst nächste volle Stunde bzw. 10 Uhr
+        $time = preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', $this->request->str('time')) ? $this->request->str('time') : null;
+        $start = $date . ' ' . ($time ?? (date('Y-m-d') === $date ? date('H', strtotime('+1 hour')) . ':00' : '10:00'));
         $event = ['id' => null, 'title' => '', 'location' => '', 'note' => '', 'start_at' => $start . ':00',
                   'end_at' => date('Y-m-d H:i:s', strtotime($start . ' +1 hour')), 'all_day' => 0, 'lead_minutes' => 0,
                   'trail_minutes' => 0, 'color' => '#0d6efd', 'template_id' => null, 'recurrence' => 'none',

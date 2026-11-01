@@ -9,7 +9,8 @@ for ($d = $from; $d <= $to; $d = date('Y-m-d', strtotime($d . ' +1 day'))) {
 }
 // Liste (mobil bzw. Listenansicht): nur Tage mit Einträgen, in der Monatsansicht nur der Monat selbst
 $listDays = array_values(array_filter($days, fn ($d) => !empty($byDay[$d]) && ($view !== 'month' || substr($d, 0, 7) === $month)));
-$viewLabels = ['month' => 'Monat', 'week' => 'Woche', 'list' => 'Liste'];
+$viewLabels = ['day' => 'Tag', 'week' => 'Woche', 'month' => 'Monat', 'list' => 'Liste'];
+$userQuery = $isSelf ? [] : ['user' => $viewUser];
 $viewName = '';
 foreach ($members as $m) {
     if ((int) $m['id'] === $viewUser) {
@@ -27,7 +28,7 @@ foreach ($members as $m) {
     <div class="btn-group ms-auto" role="group" aria-label="Ansicht">
         <?php foreach ($viewLabels as $v => $label): ?>
             <a class="btn btn-sm <?= $view === $v ? 'btn-primary' : 'btn-outline-primary' ?>"
-               href="<?= e(url('/calendar', ['view' => $v, 'date' => $date] + ($isSelf ? [] : ['user' => $viewUser]))) ?>"><?= e($label) ?></a>
+               href="<?= e(url('/calendar', ['view' => $v, 'date' => $date] + $userQuery)) ?>"><?= e($label) ?></a>
         <?php endforeach; ?>
     </div>
     <?php if (count($members) > 1): ?>
@@ -56,24 +57,30 @@ foreach ($members as $m) {
     <span><i class="bi bi-wallet2"></i> Budget offen · <i class="bi bi-check2-circle"></i> gebucht</span>
 </div>
 
-<?php if ($view !== 'list'): ?>
-    <div class="card d-none d-md-block mb-3 <?= $view === 'week' ? 'cal-week' : '' ?>">
+<?php if ($view === 'month'): ?>
+    <div class="card d-none d-md-block mb-3">
         <div class="cal-grid">
-            <?php foreach ($weekdays as $i => $wd): ?>
-                <div class="cal-head"><?= e($wd) ?><?php if ($view === 'week'): ?> <?= e(date_de($days[$i], true)) ?><?php endif; ?></div>
+            <?php foreach ($weekdays as $wd): ?>
+                <div class="cal-head"><?= e($wd) ?></div>
             <?php endforeach; ?>
             <?php foreach ($days as $d): ?>
-                <div class="cal-day <?= $d === $today ? 'cal-today' : '' ?> <?= $view === 'month' && substr($d, 0, 7) !== $month ? 'cal-other' : '' ?>">
-                    <a class="cal-num" href="<?= e(url('/calendar/new', ['date' => $d])) ?>" title="Neuer Termin am <?= e(date_de($d)) ?>"><?= (int) substr($d, 8, 2) ?></a>
+                <div class="cal-day <?= $d === $today ? 'cal-today' : '' ?> <?= substr($d, 0, 7) !== $month ? 'cal-other' : '' ?>">
+                    <a class="cal-num" href="<?= e(url('/calendar', ['view' => 'day', 'date' => $d] + $userQuery)) ?>" title="Tagesansicht <?= e(date_de($d)) ?>"><?= (int) substr($d, 8, 2) ?></a>
+                    <a class="cal-add" href="<?= e(url('/calendar/new', ['date' => $d])) ?>" title="Neuer Termin am <?= e(date_de($d)) ?>" aria-label="Neuer Termin am <?= e(date_de($d)) ?>"><i class="bi bi-plus-lg"></i></a>
                     <?php foreach ($byDay[$d] ?? [] as $s): ?>
-                        <?= View::partial('calendar/chip', ['o' => $occurrences[$s['idx']], 's' => $s, 'mode' => 'chip', 'range' => $view === 'week']) ?>
+                        <?= View::partial('calendar/chip', ['o' => $occurrences[$s['idx']], 's' => $s, 'mode' => 'chip']) ?>
                     <?php endforeach; ?>
                 </div>
             <?php endforeach; ?>
         </div>
     </div>
+<?php elseif ($view === 'week' || $view === 'day'): ?>
+    <div class="card mb-3 <?= $view === 'week' ? 'd-none d-md-block' : '' ?>">
+        <?= View::partial('calendar/timegrid', ['days' => $days, 'byDay' => $byDay, 'occurrences' => $occurrences, 'today' => $today, 'userQuery' => $userQuery]) ?>
+    </div>
 <?php endif; ?>
 
+<?php if ($view !== 'day'): ?>
 <div class="card <?= $view !== 'list' ? 'd-md-none' : '' ?>">
     <?php foreach ($listDays as $d): ?>
         <div class="cal-list-day <?= $d === $today ? 'cal-today' : '' ?>"><?= e($weekdays[(int) date('N', strtotime($d)) - 1]) ?>, <?= e(date_de($d)) ?><?= $d === $today ? ' · heute' : '' ?></div>
@@ -85,3 +92,4 @@ foreach ($members as $m) {
         <div class="card-body text-body-secondary small">Keine Termine in diesem Zeitraum. <a href="<?= e(url('/calendar/new', ['date' => $date])) ?>">Termin anlegen</a></div>
     <?php endif; ?>
 </div>
+<?php endif; ?>

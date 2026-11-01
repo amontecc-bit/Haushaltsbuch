@@ -81,6 +81,53 @@ final class CalendarServiceTest extends TestCase
         self::assertSame([['kind' => 'trail', 'from' => '00:00', 'to' => '04:00', 'all_day' => false]], $s['2026-11-09']);
     }
 
+    public function testColumnsPlaceOverlappingSideBySide(): void
+    {
+        $c = CalendarService::columns([
+            'a' => [600, 720],   // 10–12
+            'b' => [660, 690],   // 11–11:30 überschneidet a
+            'c' => [700, 760],   // 11:40–12:40 überschneidet a, nicht b → Spalte von b
+            'd' => [760, 800],   // berührt c nur → neue Gruppe
+            'e' => [900, 960],   // allein
+        ]);
+        self::assertSame(['col' => 0, 'cols' => 2], $c['a']);
+        self::assertSame(['col' => 1, 'cols' => 2], $c['b']);
+        self::assertSame(['col' => 1, 'cols' => 2], $c['c']);
+        self::assertSame(['col' => 0, 'cols' => 1], $c['d']);
+        self::assertSame(['col' => 0, 'cols' => 1], $c['e']);
+    }
+
+    public function testColumnsSameStartLongerFirst(): void
+    {
+        $c = CalendarService::columns([1 => [600, 630], 2 => [600, 720], 3 => [600, 660]]);
+        self::assertSame(0, $c[2]['col']);
+        self::assertSame(1, $c[3]['col']);
+        self::assertSame(2, $c[1]['col']);
+        self::assertSame([3, 3, 3], array_column($c, 'cols'));
+    }
+
+    public function testDayLayoutKeepsLeadAndTrailInEventColumn(): void
+    {
+        $l = CalendarService::dayLayout([
+            ['kind' => 'all', 'from' => '00:00', 'to' => '24:00', 'all_day' => true, 'idx' => 0],
+            ['kind' => 'lead', 'from' => '09:30', 'to' => '10:00', 'all_day' => false, 'idx' => 1],
+            ['kind' => 'main', 'from' => '10:00', 'to' => '11:00', 'all_day' => false, 'idx' => 1],
+            ['kind' => 'trail', 'from' => '11:00', 'to' => '11:30', 'all_day' => false, 'idx' => 1],
+            ['kind' => 'main', 'from' => '11:15', 'to' => '12:00', 'all_day' => false, 'idx' => 2],
+            ['kind' => 'main', 'from' => '18:00', 'to' => '24:00', 'all_day' => false, 'idx' => 3],
+        ]);
+        self::assertCount(1, $l['all_day']);
+        $byIdx = [];
+        foreach ($l['timed'] as $s) {
+            $byIdx[$s['idx']][] = [$s['kind'], $s['col'], $s['cols']];
+        }
+        // Nachlauf von 1 überschneidet 2 → nebeneinander, Vor-/Nachlauf in der Spalte des Termins
+        self::assertSame([['lead', 0, 2], ['main', 0, 2], ['trail', 0, 2]], $byIdx[1]);
+        self::assertSame([['main', 1, 2]], $byIdx[2]);
+        self::assertSame([['main', 0, 1]], $byIdx[3]);
+        self::assertSame(1440, end($l['timed'])['end']);
+    }
+
     public function testInstancesTouchingFindsTrailOfPreviousDay(): void
     {
         $e = self::event(['start_at' => '2026-11-02 22:00:00', 'end_at' => '2026-11-02 23:00:00', 'trail_minutes' => 120]);
