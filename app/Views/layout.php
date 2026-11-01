@@ -99,6 +99,9 @@ $flashes = Session::pullFlash();
         <main class="content container-fluid">
             <?php if (!empty($title)): ?>
                 <div class="page-head d-none d-lg-flex">
+                    <?php if (!empty($back)): ?>
+                        <a href="<?= e(url($back)) ?>" class="btn btn-sm btn-outline-secondary me-n2" aria-label="Zurück" title="Zurück"><i class="bi bi-chevron-left"></i></a>
+                    <?php endif; ?>
                     <h1 class="h3 mb-0"><?= e($title) ?></h1>
                     <div class="ms-auto d-flex gap-2"><?= $actions ?? '' ?></div>
                 </div>

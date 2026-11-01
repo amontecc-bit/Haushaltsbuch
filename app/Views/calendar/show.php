@@ -51,7 +51,7 @@ $color = e($event['color']);
             </div>
             <?php if ($canEdit): ?>
                 <div class="card-footer bg-transparent d-flex flex-wrap gap-2">
-                    <a class="btn btn-outline-primary btn-sm" href="<?= e(url("/calendar/{$event['id']}/edit")) ?>"><i class="bi bi-pencil"></i> Bearbeiten</a>
+                    <a class="btn btn-outline-primary btn-sm" href="<?= e(url("/calendar/{$event['id']}/edit", ['date' => $date])) ?>"><i class="bi bi-pencil"></i> Bearbeiten</a>
                     <form method="post" action="<?= e(url("/calendar/{$event['id']}/delete")) ?>" class="d-flex gap-2"
                           onsubmit="return confirm(event.submitter && event.submitter.value === 'one' ? 'Nur diesen Termin löschen?' : 'Termin<?= $event['recurrence'] !== 'none' ? 'serie' : '' ?> löschen?')">
                         <?= csrf_field() ?>
@@ -85,27 +85,60 @@ $color = e($event['color']);
             <div class="card mb-3">
                 <div class="card-header bg-transparent"><strong><i class="bi bi-wallet2"></i> Mein Budget</strong>
                     <?php if ($event['recurrence'] !== 'none'): ?><span class="small text-body-secondary">– je Termin</span><?php endif; ?></div>
-                <div class="card-body">
+                <div class="card-body" x-data="{ editing: <?= $budget ? 'false' : 'true' ?> }">
                     <?php if ($budget): ?>
-                        <?php if ($booking): ?>
-                            <div class="alert alert-success small mb-3"><i class="bi bi-check2-circle"></i>
-                                Am <?= e(date_de($date)) ?> gebucht: <strong><?= money(abs((float) $booking['tx_amount'])) ?></strong> auf <?= e($booking['account_name'] ?? '–') ?>
-                                · <a href="<?= e(url("/transactions/{$booking['transaction_id']}/edit")) ?>">Buchung ansehen</a>
-                                <div class="text-body-secondary">Wird die Buchung gelöscht, ist das Budget wieder offen.</div>
+                        <div x-show="!editing">
+                            <div class="d-flex align-items-start gap-2 mb-3">
+                                <div class="flex-grow-1">
+                                    <div class="small text-body-secondary">Geplant</div>
+                                    <div class="fs-5 fw-semibold"><?= money($budget['amount']) ?></div>
+                                    <div class="small text-body-secondary">
+                                        <?= e(implode(' · ', array_filter([$budgetAccount, $budgetCategory, $budget['note']]))) ?>
+                                    </div>
+                                    <?php if (!$budget['account_id']): ?>
+                                        <div class="small text-warning-emphasis">Ohne Konto – fließt nicht in die Prognose ein.</div>
+                                    <?php endif; ?>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" @click="editing = true" title="Budget bearbeiten" aria-label="Budget bearbeiten"><i class="bi bi-pencil"></i></button>
+                                <?php if ($hasBookings): ?>
+                                    <span title="Schon gebucht – lösche zuerst die Buchung, um das Budget zu entfernen.">
+                                        <button type="button" class="btn btn-sm btn-outline-danger" disabled aria-label="Budget entfernen"><i class="bi bi-x-lg"></i></button>
+                                    </span>
+                                <?php else: ?>
+                                    <form method="post" action="<?= e(url("/calendar/{$event['id']}/budget")) ?>" onsubmit="return confirm('Budget entfernen?')">
+                                        <?= csrf_field() ?>
+                                        <input type="hidden" name="remove" value="1">
+                                        <input type="hidden" name="date" value="<?= e($date) ?>">
+                                        <button class="btn btn-sm btn-outline-danger" title="Budget entfernen" aria-label="Budget entfernen"><i class="bi bi-x-lg"></i></button>
+                                    </form>
+                                <?php endif; ?>
                             </div>
-                        <?php else: ?>
-                            <div class="d-flex gap-2 align-items-center mb-3">
-                                <div class="flex-grow-1 small">Offen für <?= e(date_de($date)) ?>: <strong><?= money($budget['amount']) ?></strong>
-                                    <?= $budget['account_id'] ? '' : '<br><span class="text-warning-emphasis">Ohne Konto – fließt nicht in die Prognose ein.</span>' ?></div>
-                                <a class="btn btn-primary" href="<?= e(url("/calendar/{$event['id']}/book", ['date' => $date])) ?>"><i class="bi bi-cash-coin"></i> Als Ausgabe buchen</a>
-                            </div>
-                        <?php endif; ?>
+                            <?php if ($booking): ?>
+                                <div class="alert alert-success small mb-0"><i class="bi bi-check2-circle"></i>
+                                    Am <?= e(date_de($date)) ?> gebucht: <strong><?= money(abs((float) $booking['tx_amount'])) ?></strong> auf <?= e($booking['account_name'] ?? '–') ?>
+                                    · <a href="<?= e(url("/transactions/{$booking['transaction_id']}/edit")) ?>">Buchung ansehen</a>
+                                    <div class="text-body-secondary">Wird die Buchung gelöscht, ist das Budget wieder offen.</div>
+                                </div>
+                            <?php else: ?>
+                                <div class="d-grid d-sm-flex align-items-center gap-2">
+                                    <a class="btn btn-primary" href="<?= e(url("/calendar/{$event['id']}/book", ['date' => $date])) ?>"><i class="bi bi-cash-coin"></i> Als Ausgabe buchen</a>
+                                    <span class="small text-body-secondary">offen für <?= e(date_de($date)) ?></span>
+                                </div>
+                            <?php endif; ?>
+                        </div>
                     <?php endif; ?>
-                    <form method="post" action="<?= e(url("/calendar/{$event['id']}/budget")) ?>">
+                    <form method="post" action="<?= e(url("/calendar/{$event['id']}/budget")) ?>" x-show="editing" <?= $budget ? 'x-cloak' : '' ?>>
                         <?= csrf_field() ?>
-                        <?= View::partial('calendar/budget_fields', ['budget' => $budget, 'accounts' => $accounts, 'categories' => $categories, 'defaultAccount' => null]) ?>
-                        <button class="btn btn-outline-primary btn-sm"><?= $budget ? 'Budget ändern' : 'Budget planen' ?></button>
-                        <span class="form-text ms-2">Leerer Betrag entfernt das Budget.</span>
+                        <input type="hidden" name="date" value="<?= e($date) ?>">
+                        <?= View::partial('calendar/budget_fields', ['budget' => $budget, 'accounts' => $accounts, 'categories' => $categories, 'defaultAccount' => null, 'bind' => false]) ?>
+                        <div class="d-flex flex-wrap align-items-center gap-2">
+                            <button class="btn btn-primary btn-sm"><i class="bi bi-check-lg"></i> <?= $budget ? 'Budget speichern' : 'Budget planen' ?></button>
+                            <?php if ($budget): ?>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" @click="editing = false">Abbrechen</button>
+                            <?php else: ?>
+                                <span class="form-text">Optional. Mit Konto fließt es in die Prognose ein.</span>
+                            <?php endif; ?>
+                        </div>
                     </form>
                 </div>
             </div>

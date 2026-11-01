@@ -41,6 +41,8 @@ $config = [
         <form method="post" action="<?= e($action) ?>" class="card" x-data="calendarForm(<?= e(json_encode($config)) ?>)">
             <?= csrf_field() ?>
             <input type="hidden" name="template_id" :value="templateId">
+            <?php if (!empty($date)): ?><input type="hidden" name="date" value="<?= e($date) ?>"><?php endif; ?>
+            <?php if (!empty($fromTemplates)): ?><input type="hidden" name="from" value="templates"><?php endif; ?>
             <div class="card-body">
                 <?php if ($templates): ?>
                     <div class="mb-3">

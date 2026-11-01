@@ -533,7 +533,10 @@ angelegt hast, und alle, zu denen dich jemand als **Teilnehmer** eingetragen hat
   gestrichelt** direkt davor bzw. danach – so siehst du sofort, wann du wirklich losmusst und wann du wieder zurück bist.
 - Oben wechselst du zwischen **Monat**, **Woche** und **Liste**; mit dem Auswahlfeld siehst du auch den Kalender eines
   anderen Familienmitglieds (Budgets anderer bleiben dabei verborgen).
-- Ein Klick auf eine Tageszahl legt dort einen neuen Termin an.
+- Ein Klick auf eine Tageszahl legt dort einen neuen Termin an, ein Klick auf einen Termin öffnet seine Details.
+- Von den Details, den Vorlagen und den Formularen führt der Pfeil **‹** links neben der Überschrift (bzw. oben in der
+  Kopfzeile am Handy) oder **Zum Kalender** zurück – und zwar in die zuletzt gewählte Ansicht (Monat, Woche, Liste,
+  Kalender eines anderen Mitglieds), beim Termin direkt an dessen Tag.
 
 ![Woche](anleitung/kalender-woche.png)
 
@@ -568,6 +571,11 @@ Zu jedem Termin kann **jeder Teilnehmer sein eigenes Budget** planen: Betrag, Ko
 für ein Geburtstagsgeschenk. Bei Terminserien gilt das Budget **je Termin**.
 
 ![Termin mit Budget](anleitung/kalender-termin.png)
+
+- Solange noch kein Budget geplant ist, steht am Termin unter **Mein Budget** das Formular mit **Budget planen**.
+- Ist ein Budget geplant, siehst du stattdessen Betrag, Konto, Kategorie und Notiz. Mit dem **Stift** öffnest du das
+  Formular zum Ändern (**Abbrechen** schließt es wieder), mit dem **X** entfernst du das Budget. Ist es schon gebucht,
+  bleibt es erhalten, bis die Buchung gelöscht ist.
 
 - Budgets mit Konto fließen in die **[Prognose](#11-prognose)** ein (Liste „Künftige feste Buchungen und
   Kalender-Budgets“). Ohne Konto werden sie nur angezeigt.

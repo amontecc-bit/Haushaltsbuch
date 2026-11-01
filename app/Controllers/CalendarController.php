@@ -6,6 +6,7 @@ namespace App\Controllers;
 
 use App\Core\Auth;
 use App\Core\Money;
+use App\Core\Session;
 use App\Repositories\AccountRepository;
 use App\Repositories\CalendarRepository;
 use App\Repositories\CategoryRepository;
@@ -73,6 +74,12 @@ final class CalendarController extends Controller
         }
 
         $base = ['view' => $view] + ($isSelf ? [] : ['user' => $userId]);
+        // Ansicht merken: Zurück-Links aus Termin, Formular und Vorlagen führen wieder hierher
+        Session::set('calendar_view', array_filter([
+            'view' => $view === 'month' ? null : $view,
+            'user' => $isSelf ? null : $userId,
+            'date' => $view === 'month' && substr($date, 0, 7) !== $month ? $month . '-01' : $date,
+        ]));
         $this->view('calendar/index', [
             'title'       => 'Kalender',
             'actions'     => '<a class="btn btn-primary btn-sm" href="' . e(url('/calendar/new', ['date' => $date])) . '"><i class="bi bi-plus-lg"></i> Termin</a>',
@@ -109,10 +116,13 @@ final class CalendarController extends Controller
         $isParticipant = in_array(Auth::id(), array_column($participants, 'id'), true);
         $budget = $isParticipant ? $this->repo->budget($id, Auth::id()) : null;
         $bookings = $budget ? ($this->repo->bookingsFor([(int) $budget['id']])[(int) $budget['id']] ?? []) : [];
+        $accounts = $this->bookableAccounts();
+        $categories = (new CategoryRepository())->all($this->hid, 'expense');
 
         $this->view('calendar/show', [
             'title'         => $event['title'],
-            'back'          => '/calendar?date=' . $date,
+            'back'          => $this->calendarUrl($date),
+            'actions'       => '<a class="btn btn-outline-secondary btn-sm" href="' . e(url($this->calendarUrl($date))) . '"><i class="bi bi-calendar3"></i> Zum Kalender</a>',
             'event'         => $event,
             'instance'      => $instance,
             'date'          => $date,
@@ -122,9 +132,12 @@ final class CalendarController extends Controller
             'canEdit'       => CalendarService::canEdit($event, Auth::id(), Auth::isAdmin()),
             'budget'        => $budget,
             'booking'       => $bookings[$date] ?? null,
+            'hasBookings'   => (bool) $bookings,
+            'budgetAccount' => $budget && $budget['account_id'] ? (array_column($accounts, 'name', 'id')[(int) $budget['account_id']] ?? null) : null,
+            'budgetCategory' => $this->categoryLabel($categories, $budget['category_id'] ?? null),
             'allBudgets'    => Auth::isAdmin() ? $this->repo->budgetsOfEvent($id) : [],
-            'accounts'      => $this->bookableAccounts(),
-            'categories'    => (new CategoryRepository())->all($this->hid, 'expense'),
+            'accounts'      => $accounts,
+            'categories'    => $categories,
             'upcoming'      => $event['recurrence'] !== 'none'
                 ? CalendarService::occurrences($event, date('Y-m-d'), date('Y-m-d', strtotime('+1 year')), $exceptions) : [],
         ]);
@@ -156,7 +169,7 @@ final class CalendarController extends Controller
         }
         $id = CalendarService::save($this->hid, Auth::id(), null, $data, $participants);
         $this->saveOwnBudget($id, $budget);
-        $this->redirect('/calendar/' . $id, 'Termin gespeichert.');
+        $this->redirect('/calendar/' . $id . '?date=' . substr($data['start_at'], 0, 10), 'Termin gespeichert.');
     }
 
     public function edit(int $id): void
@@ -178,7 +191,8 @@ final class CalendarController extends Controller
         if ($this->repo->isParticipant($id, Auth::id())) {
             $this->saveOwnBudget($id, $budget);
         }
-        $this->redirect('/calendar/' . $id, 'Termin gespeichert.');
+        $date = valid_date($this->request->str('date'));
+        $this->redirect('/calendar/' . $id . ($date ? '?date=' . $date : ''), 'Termin gespeichert.');
     }
 
     /** Löschen: scope=one (nur dieses Vorkommen einer Serie) oder die ganze Serie bzw. den Einzeltermin */
@@ -188,10 +202,10 @@ final class CalendarController extends Controller
         $date = valid_date($this->request->str('date'));
         if ($this->request->str('scope') === 'one' && $event['recurrence'] !== 'none' && $date) {
             $this->repo->addException($id, $date);
-            $this->redirect('/calendar?date=' . $date, 'Termin am ' . date_de($date) . ' gelöscht.');
+            $this->redirect($this->calendarUrl($date), 'Termin am ' . date_de($date) . ' gelöscht.');
         }
         $this->repo->delete($id, $this->hid);
-        $this->redirect('/calendar?date=' . ($date ?? substr($event['start_at'], 0, 10)), 'Termin gelöscht.');
+        $this->redirect($this->calendarUrl($date ?? substr($event['start_at'], 0, 10)), 'Termin gelöscht.');
     }
 
     /** Eigenes Budget setzen (Teilnehmer); leerer Betrag entfernt es */
@@ -201,12 +215,17 @@ final class CalendarController extends Controller
         if (!$this->repo->isParticipant($id, Auth::id())) {
             $this->back('/calendar/' . $id, 'Budgets gibt es nur für Teilnehmer des Termins.');
         }
-        $budget = $this->budgetInput();
+        $date = valid_date($this->request->str('date'));
+        $target = '/calendar/' . $id . ($date ? '?date=' . $date : '');
+        $budget = $this->request->str('remove') === '1' ? null : $this->budgetInput();
         if (isset($budget['error'])) {
-            $this->back('/calendar/' . $id, $budget['error']);
+            $this->back($target, $budget['error']);
         }
         $this->saveOwnBudget($id, $budget);
-        $this->back('/calendar/' . $id, $budget ? 'Budget gespeichert.' : 'Budget entfernt.', 'success');
+        if (!$budget && $this->repo->budget($id, Auth::id())) {
+            $this->back($target, 'Das Budget ist schon gebucht und bleibt deshalb erhalten. Lösche zuerst die Buchung.', 'warning');
+        }
+        $this->back($target, $budget ? 'Budget gespeichert.' : 'Budget entfernt.', 'success');
     }
 
     public function bookForm(int $id): void
@@ -253,7 +272,9 @@ final class CalendarController extends Controller
         $current = $editId ? $this->repo->template($editId, $this->hid, Auth::id()) : null;
         $this->view('calendar/templates', [
             'title'      => 'Terminvorlagen',
-            'back'       => '/calendar',
+            'back'       => $this->calendarUrl(),
+            'actions'    => '<a class="btn btn-outline-secondary btn-sm" href="' . e(url($this->calendarUrl())) . '"><i class="bi bi-calendar3"></i> Zum Kalender</a>'
+                          . '<a class="btn btn-primary btn-sm" href="' . e(url('/calendar/new')) . '"><i class="bi bi-plus-lg"></i> Termin</a>',
             'templates'  => $templates,
             'tpl'        => $current ?? ['id' => null, 'name' => '', 'title' => '', 'location' => '', 'duration_minutes' => 60,
                                          'lead_minutes' => 0, 'trail_minutes' => 0, 'all_day' => 0, 'color' => '#0d6efd',
@@ -292,6 +313,27 @@ final class CalendarController extends Controller
     }
 
     // ---- intern ------------------------------------------------------------------------------
+
+    /** Kategoriename für die Anzeige („Oberkategorie › Kategorie“) */
+    private function categoryLabel(array $categories, mixed $id): ?string
+    {
+        foreach ($categories as $c) {
+            if ($id && (int) $c['id'] === (int) $id) {
+                return ($c['parent_name'] ? $c['parent_name'] . ' › ' : '') . $c['name'];
+            }
+        }
+        return null;
+    }
+
+    /** Link zurück in die zuletzt benutzte Kalenderansicht (Monat/Woche/Liste, Mitglied), optional an einem Tag */
+    private function calendarUrl(?string $date = null): string
+    {
+        $q = (array) Session::get('calendar_view', []);
+        if ($date) {
+            $q['date'] = $date;
+        }
+        return '/calendar' . ($q ? '?' . http_build_query($q) : '');
+    }
 
     /** @return array|string Spalten oder Fehlermeldung */
     private function templateInput(): array|string
@@ -459,10 +501,17 @@ final class CalendarController extends Controller
     private function renderForm(array $event, array $participants, ?array $budget, string $title, ?string $error = null): void
     {
         $accounts = $this->bookableAccounts();
+        // Vorkommen, von dem aus bearbeitet wird (für den Rücksprung)
+        $date = valid_date($this->request->str('date'));
+        $fromTemplates = $this->request->str('from') === 'templates';
         $defaultAccount = (new UserPreferenceRepository())->account(Auth::id(), 'account_calendar', array_map(fn ($a) => (int) $a['id'], $accounts));
         $this->view('calendar/form', [
             'title'          => $title,
-            'back'           => !empty($event['id']) ? '/calendar/' . $event['id'] : '/calendar',
+            'back'           => !empty($event['id'])
+                ? '/calendar/' . $event['id'] . ($date ? '?date=' . $date : '')
+                : ($fromTemplates ? '/calendar/templates' : $this->calendarUrl(substr($event['start_at'], 0, 10))),
+            'date'           => $date,
+            'fromTemplates'  => $fromTemplates,
             'event'          => $event,
             'participants'   => $participants,
             'budget'         => $budget,

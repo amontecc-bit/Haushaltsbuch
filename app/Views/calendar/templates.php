@@ -26,7 +26,7 @@ $dur = (int) $tpl['duration_minutes'];
                                     <?= $t['budget_amount'] !== null ? ' · <i class="bi bi-wallet2"></i> ' . money($t['budget_amount']) : '' ?>
                                 </div>
                             </div>
-                            <a class="btn btn-sm btn-primary" href="<?= e(url('/calendar/new', ['template' => $t['id']])) ?>" title="Termin aus Vorlage"><i class="bi bi-calendar-plus"></i></a>
+                            <a class="btn btn-sm btn-primary" href="<?= e(url('/calendar/new', ['template' => $t['id'], 'from' => 'templates'])) ?>" title="Termin aus Vorlage"><i class="bi bi-calendar-plus"></i></a>
                             <a class="btn btn-sm btn-outline-secondary" href="<?= e(url('/calendar/templates', ['edit' => $t['id']])) ?>" title="Bearbeiten"><i class="bi bi-pencil"></i></a>
                             <form method="post" action="<?= e(url("/calendar/templates/{$t['id']}/delete")) ?>" onsubmit="return confirm('Vorlage löschen?')">
                                 <?= csrf_field() ?>
