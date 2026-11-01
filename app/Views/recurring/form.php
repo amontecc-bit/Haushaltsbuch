@@ -11,9 +11,21 @@ $counterAccount = $request->int('counter_account_id')
 <div class="row justify-content-center">
     <div class="col-lg-8 col-xl-6">
         <?php if ($error): ?><div class="alert alert-danger"><?= e($error) ?></div><?php endif; ?>
+        <?php if (!empty($wishPlans)): $planSum = array_sum(array_map(fn ($w) => $w['plan']['rate'], $wishPlans)); ?>
+            <div class="alert alert-info small d-flex gap-2">
+                <i class="bi bi-piggy-bank"></i>
+                <div>
+                    Aus diesem Posten werden <?= count($wishPlans) === 1 ? 'ein Sparplan' : count($wishPlans) . ' Sparpläne' ?> bezahlt
+                    (zusammen <?= money($planSum, true) ?>/Monat):
+                    <?php foreach ($wishPlans as $i => $wp): ?><?= $i ? ', ' : '' ?><a href="<?= e(url("/wishes/{$wp['id']}")) ?>"><?= e($wp['title']) ?></a><?php endforeach; ?>.
+                    <a href="<?= e(url('/wishes/plans')) ?>#rec-<?= (int) $tpl['id'] ?>">Übersicht</a>
+                </div>
+            </div>
+        <?php endif; ?>
         <form method="post" action="<?= e($action) ?>" class="card" x-data="{ kind: '<?= e($tpl['kind']) ?>', counter: <?= $request->bool('counter') ? 'true' : 'false' ?> }">
             <?= csrf_field() ?>
             <input type="hidden" name="kind" :value="kind">
+            <?php if (!empty($returnTo)): ?><input type="hidden" name="return" value="<?= e($returnTo) ?>"><?php endif; ?>
             <div class="card-body">
                 <div class="btn-group type-toggle w-100 mb-3" role="group">
                     <button type="button" class="btn" :class="kind === 'expense' ? 'btn-danger' : 'btn-outline-danger'" @click="kind = 'expense'">Ausgabe</button>
@@ -126,12 +138,13 @@ $counterAccount = $request->int('counter_account_id')
             </div>
             <div class="card-footer d-flex gap-2">
                 <button class="btn btn-primary btn-lg">Speichern</button>
-                <a href="<?= e(url('/recurring')) ?>" class="btn btn-link">Abbrechen</a>
+                <a href="<?= e(url($returnTo ?: '/recurring')) ?>" class="btn btn-link">Abbrechen</a>
             </div>
         </form>
         <?php if ($isEdit): ?>
-            <form method="post" action="<?= e(url("/recurring/{$tpl['id']}/delete")) ?>" class="mt-3 text-end" onsubmit="return HB.confirmSubmit(this, 'Wiederkehrende Buchung löschen? Bereits gebuchte Einträge bleiben erhalten.')">
+            <form method="post" action="<?= e(url("/recurring/{$tpl['id']}/delete")) ?>" class="mt-3 text-end" onsubmit="return HB.confirmSubmit(this, 'Wiederkehrende Buchung löschen? Bereits gebuchte Einträge bleiben erhalten.<?= !empty($wishPlans) ? ' Zugeordnete Sparpläne verlieren ihren Posten.' : '' ?>')">
                 <?= csrf_field() ?>
+                <?php if (!empty($returnTo)): ?><input type="hidden" name="return" value="<?= e($returnTo) ?>"><?php endif; ?>
                 <button class="btn btn-link text-danger"><i class="bi bi-trash"></i> Löschen</button>
             </form>
         <?php endif; ?>

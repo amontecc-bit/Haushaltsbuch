@@ -22,6 +22,7 @@ use App\Controllers\SettingsController;
 use App\Controllers\ShoppingController;
 use App\Controllers\TransactionController;
 use App\Controllers\UserController;
+use App\Controllers\WishController;
 
 /** @var \App\Core\Router $router */
 
@@ -168,6 +169,18 @@ $router->post('/calendar/{id}/move', [CalendarController::class, 'move']);
 $router->post('/calendar/{id}/budget', [CalendarController::class, 'budget']);
 $router->get('/calendar/{id}/book', [CalendarController::class, 'bookForm']);
 $router->post('/calendar/{id}/book', [CalendarController::class, 'book']);
+
+// Wunschliste & Sparpläne
+$router->get('/wishes', [WishController::class, 'index']);
+$router->get('/wishes/new', [WishController::class, 'create']);
+$router->post('/wishes', [WishController::class, 'store']);
+$router->get('/wishes/plans', [WishController::class, 'plans']);
+$router->get('/wishes/{id}', [WishController::class, 'show']);
+$router->get('/wishes/{id}/edit', [WishController::class, 'edit']);
+$router->get('/wishes/{id}/image', [WishController::class, 'image']);
+$router->post('/wishes/{id}', [WishController::class, 'update']);
+$router->post('/wishes/{id}/delete', [WishController::class, 'delete']);
+$router->post('/wishes/{id}/status', [WishController::class, 'status']);
 
 // Kategorien & Regeln
 $router->get('/categories', [CategoryController::class, 'index']);

@@ -9,7 +9,9 @@ use App\Core\Money;
 use App\Repositories\AccountRepository;
 use App\Repositories\CategoryRepository;
 use App\Repositories\RecurringRepository;
+use App\Repositories\WishRepository;
 use App\Services\RecurrenceService;
+use App\Services\WishService;
 
 final class RecurringController extends Controller
 {
@@ -170,7 +172,7 @@ final class RecurringController extends Controller
         });
         RecurrenceService::materializeDue($this->hid);
         RecurrenceService::linkExisting($this->hid, $id);
-        $this->redirect('/recurring', 'Gespeichert. Änderungen gelten für künftige Buchungen.');
+        $this->redirect($this->returnTo() ?: '/recurring', 'Gespeichert. Änderungen gelten für künftige Buchungen.');
     }
 
     public function delete(int $id): void
@@ -179,7 +181,7 @@ final class RecurringController extends Controller
         $tpl = $repo->find($id, $this->hid) ?? $this->notFound();
         Auth::authorize((int) $tpl['account_id'], 'book');
         $repo->delete($id, $this->hid);
-        $this->redirect('/recurring', 'Gelöscht. Bereits erzeugte Buchungen bleiben erhalten.'
+        $this->redirect($this->returnTo() ?: '/recurring', 'Gelöscht. Bereits erzeugte Buchungen bleiben erhalten.'
             . ($tpl['counterpart_id'] ? ' Der Gegeneintrag bleibt bestehen.' : ''));
     }
 
@@ -316,6 +318,30 @@ final class RecurringController extends Controller
         $repo->update($id, $this->hid, ['counterpart_id' => $other]);
     }
 
+    /** Rücksprung nach dem Bearbeiten (nur innerhalb der Wunschliste erlaubt, z. B. aus „Sparpläne nach Posten“) */
+    private function returnTo(): string
+    {
+        $r = $this->request->str('return');
+        return preg_match('#^/wishes(/[a-z0-9/]*)?$#', $r) ? $r : '';
+    }
+
+    /** Offene Wünsche, deren laufender Sparplan aus diesem Posten bezahlt wird */
+    private function wishPlans(int $recurringId): array
+    {
+        $out = [];
+        try {
+            foreach ((new WishRepository())->withPlans($this->hid) as $w) {
+                $w['plan'] = WishService::plan($w, date('Y-m-d'));
+                if ((int) $w['plan_recurring_id'] === $recurringId && $w['plan']['running']) {
+                    $out[] = $w;
+                }
+            }
+        } catch (\PDOException) {
+            // Migration 011 noch nicht gelaufen
+        }
+        return $out;
+    }
+
     private function formFromData(array $d): array
     {
         $cents = Money::toCents($d['amount']);
@@ -341,8 +367,10 @@ final class RecurringController extends Controller
                 $counterpart['account_name'] = $names[$counterpart['account_id']] ?? '?';
             }
         }
+        $returnTo = $this->returnTo();
         $this->view('recurring/form', [
-            'title' => $title, 'back' => '/recurring', 'tpl' => $tpl, 'error' => $error, 'counterpart' => $counterpart,
+            'title' => $title, 'back' => $returnTo ?: '/recurring', 'returnTo' => $returnTo, 'tpl' => $tpl,
+            'wishPlans' => !empty($tpl['id']) ? $this->wishPlans((int) $tpl['id']) : [], 'error' => $error, 'counterpart' => $counterpart,
             'accounts' => $accounts, 'categories' => (new CategoryRepository())->all($this->hid),
         ]);
     }

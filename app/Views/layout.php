@@ -13,6 +13,7 @@ $nav = [
     ['/inventory', 'box-seam', 'Vorrat'],
     ['/recipes', 'journal-richtext', 'Rezepte'],
     ['/recurring', 'arrow-repeat', 'Fixkosten'],
+    ['/wishes', 'gift', 'Wunschliste'],
     ['/import', 'upload', 'CSV-Import'],
     ['/reports', 'pie-chart', 'Auswertungen'],
     ['/forecast', 'graph-up-arrow', 'Prognose'],
@@ -147,6 +148,7 @@ $flashes = Session::pullFlash();
                 <a href="<?= e(url('/import')) ?>"><i class="bi bi-filetype-csv text-info"></i>CSV-Import</a>
                 <a href="<?= e(url('/recurring/new')) ?>"><i class="bi bi-arrow-repeat text-secondary"></i>Fixkosten</a>
                 <a href="<?= e(url('/calendar/new')) ?>"><i class="bi bi-calendar-plus text-primary"></i>Termin</a>
+                <a href="<?= e(url('/wishes/new')) ?>"><i class="bi bi-gift text-danger"></i>Wunsch</a>
             </div>
         </div>
     </div>
