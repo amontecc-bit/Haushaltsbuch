@@ -133,6 +133,8 @@ Noch nicht real getestet: Kamera auf echtem Smartphone (braucht HTTPS), KI-Erken
 MCP-Konnektor mit echter Claude-App (braucht HTTPS-Server).
 Kalender: Web und MCP gegen MariaDB-Testdatenbank durchgespielt; Screenshots `docs/anleitung/kalender*.png` mit
 Playwright/Chromium (Linux) erzeugt – `uebersicht*.png` und `prognose.png` zeigen die neue Terminkarte bzw. Budgets
-noch nicht (bei Gelegenheit mit `bin/screenshots.py` neu erzeugen).
+noch nicht, `kalender-termin.png` noch die alte Budgetkarte ohne Stift/X (bei Gelegenheit mit `bin/screenshots.py` neu erzeugen).
+Navigation: `$back` erscheint auch am Desktop als Pfeil links neben der Überschrift; der Kalender merkt sich die
+zuletzt genutzte Ansicht in der Sitzung (`calendar_view`), Zurück-Links laufen über `CalendarController::calendarUrl()`.
 Ideen: Erinnerungen/ICS-Export für Termine, Budgets je Kategorie mit Warnung, Sparziele, Bearbeiten von CSV-Profilen in der Oberfläche,
 Konten-Export/Backup, E-Mail-Einladung für Familienmitglieder, Zwei-Faktor-Login.
