@@ -15,14 +15,15 @@ Kassenbons fotografieren, Auswertungen ansehen, Termine mit Budgets planen und s
 6. [Einkäufe, Kassenbons und Einkaufsliste](#6-einkäufe-kassenbons-und-einkaufsliste)
 7. [Vorrat und Rezepte](#7-vorrat-und-rezepte)
 8. [Fixkosten und Daueraufträge](#8-fixkosten-und-daueraufträge)
-9. [Kategorien und Regeln](#9-kategorien-und-regeln)
-10. [Auswertungen](#10-auswertungen)
-11. [Prognose](#11-prognose)
-12. [Kalender](#12-kalender)
-13. [Kredite](#13-kredite)
-14. [Claude auf dem Smartphone](#14-claude-auf-dem-smartphone)
-15. [Für Administratoren: Konten, Familie, Einstellungen](#15-für-administratoren-konten-familie-einstellungen)
-16. [Häufige Fragen](#16-häufige-fragen)
+9. [Wunschliste und Sparpläne](#9-wunschliste-und-sparpläne)
+10. [Kategorien und Regeln](#10-kategorien-und-regeln)
+11. [Auswertungen](#11-auswertungen)
+12. [Prognose](#12-prognose)
+13. [Kalender](#13-kalender)
+14. [Kredite](#14-kredite)
+15. [Claude auf dem Smartphone](#15-claude-auf-dem-smartphone)
+16. [Für Administratoren: Konten, Familie, Einstellungen](#16-für-administratoren-konten-familie-einstellungen)
+17. [Häufige Fragen](#17-häufige-fragen)
 
 ---
 
@@ -421,7 +422,53 @@ zuweisen). Buchungen, die zu Fixkosten gehören, sind in der Buchungsliste geken
 
 ---
 
-## 9. Kategorien und Regeln
+## 9. Wunschliste und Sparpläne
+
+Unter **Wunschliste** sammelt ihr geplante Anschaffungen und Wünsche – vom neuen Fahrrad bis zum Weihnachtsgeschenk.
+Jeder Wunsch hat eine **Überschrift**, eine **Beschreibung** und ein **Bild** (Foto oder Screenshot, auch direkt mit der
+Handykamera). Dazu kommen auf Wunsch Preis, Wunschtermin, Anlass (z. B. „Weihnachten“), für wen der Wunsch ist und ein Link
+zum Angebot. Die Liste lässt sich nach Anlass, Person und Status (offen/erfüllt) filtern. Ist ein Wunsch gekauft oder
+verschenkt, tippst du auf **Erfüllt / gekauft**; mit **Wieder offen** lässt sich das zurücknehmen.
+
+**Sparplan einrichten:** Im Wunsch den Schalter **Sparplan** einschalten und angeben:
+
+- **Bezahlt aus Posten** – der Posten aus den [Fixkosten](#8-fixkosten-und-daueraufträge), aus dem die Rate kommt,
+  z. B. der Dauerauftrag „Sparrate“ vom Girokonto aufs Tagesgeld. Das geht mit Umbuchungen, Einnahmen und Ausgaben.
+- **Erspartes liegt auf Konto** – wird bei Umbuchungen und Einnahmen automatisch gesetzt (das Konto der Einnahmeseite,
+  bei einer Ausgabe mit Gegeneintrag dessen Konto). Nur ohne Einnahmeseite wählst du das Konto selbst.
+- **Rate / Monat**, **Erste Rate am** und **Bereits angespart**.
+
+Schon beim Tippen zeigt das Formular, **wann der Betrag zusammen ist**, wenn du den Sparplan einhältst – und ob der
+Wunschtermin klappt (sonst mit der dafür nötigen Monatsrate). Außerdem siehst du, wie viel beim gewählten Posten noch
+frei ist. Wählst du einen Posten, wird der freie Betrag als Rate vorgeschlagen.
+
+![Wunsch mit Sparplan](anleitung/wunsch-formular.png)
+
+Der Sparplan ist **virtuell**: Es wird nichts gebucht. Das Haushaltsbuch rechnet nur mit, wie viel bis heute angespart sein
+müsste. Weicht das ab, beim Bearbeiten einfach **Bereits angespart** korrigieren (dort steht immer der aktuelle Stand und die
+nächste Rate). Ist der Preis erreicht, endet der Sparplan von selbst.
+
+**Sparpläne nach Posten:** Diese Ansicht (Reiter oben in der Wunschliste) zeigt jeden Posten mit seinen Sparplänen:
+
+- wie viel der Posten im Monat hergibt und wie viel die Sparpläne zusammen davon belegen,
+- **noch frei** bzw. **um … überschritten** – überschrittene Posten stehen oben und sind gelb markiert; eine Warnung
+  erscheint auch in der Wunschliste, auf den betroffenen Wünschen und beim Speichern,
+- je Wunsch Rate, Angespartes, Zieldatum und **Deckung**.
+
+![Sparpläne nach Posten](anleitung/wunschliste-sparplaene.png)
+
+**Deckung** heißt: Ist das bisher Ersparte auch wirklich auf dem Konto? Unter **Deckung je Konto** steht der Kontostand
+neben der Summe des Ersparten. Reicht der Kontostand nicht, steht dort, **wie viel fehlt**. Gedeckt wird in der Reihenfolge
+der Wunschtermine – der dringendste Wunsch zuerst.
+
+Mit **Posten** gelangst du direkt zum Bearbeiten des Dauerauftrags (z. B. um die Sparrate zu erhöhen) und danach zurück in die
+Übersicht. Umgekehrt zeigt das Formular eines Postens an, welche Sparpläne aus ihm bezahlt werden.
+
+> Wünsche sieht die ganze Familie. Konto, Erspartes und Deckung sieht nur, wer das Konto sehen darf.
+
+---
+
+## 10. Kategorien und Regeln
 
 ### Kategorien
 
@@ -432,7 +479,7 @@ anlegen (**+** neben einer Hauptkategorie für eine Unterkategorie) und löschen
 ![Kategorien](anleitung/kategorien.png)
 
 Beim Bearbeiten einer Kategorie gibt es die Option **„In der Prognose ausklammern“**. Sie ist für Einmaliges gedacht,
-etwa eine neue Waschmaschine oder den Urlaub, das die Prognose sonst verzerren würde (siehe [Prognose](#11-prognose)).
+etwa eine neue Waschmaschine oder den Urlaub, das die Prognose sonst verzerren würde (siehe [Prognose](#12-prognose)).
 
 ### Wie Kategorien automatisch vergeben werden
 
@@ -454,7 +501,7 @@ ordnet mit den Regeln nachträglich alle noch offenen Buchungen zu.
 
 ---
 
-## 10. Auswertungen
+## 11. Auswertungen
 
 Unter **Auswertungen** siehst du, wofür das Geld ausgegeben wird.
 
@@ -489,7 +536,7 @@ Kategorie für künftige Einkäufe.
 
 ---
 
-## 11. Prognose
+## 12. Prognose
 
 Die **Prognose** zeigt, wie sich die Kontostände in den nächsten 3 bis 36 Monaten voraussichtlich entwickeln.
 
@@ -499,7 +546,7 @@ So wird gerechnet:
 
 - Ausgangspunkt ist der **Kontostand heute**.
 - Dazu kommen alle **Fixkosten** an ihren Terminen und die noch nicht gebuchten **Budgets aus dem Kalender**
-  (Liste „Künftige feste Buchungen und Kalender-Budgets“, siehe [Kalender](#12-kalender)).
+  (Liste „Künftige feste Buchungen und Kalender-Budgets“, siehe [Kalender](#13-kalender)).
 - Alles Übrige, also Einkäufe, Tanken, Freizeit usw., fließt als **Durchschnitt der letzten Monate** ein
   („Ø variabel / Monat“, einstellbar: aus wie vielen Monaten).
 
@@ -508,7 +555,7 @@ warnt die Prognose mit einem roten Hinweis. Über das Auswahlfeld rechts oben ka
 Unter **Annahmen je Konto** steht, welcher Durchschnitt verwendet wird. Ein Klick darauf zeigt die Aufschlüsselung.
 
 > Verzerrt eine einmalige große Ausgabe den Durchschnitt, die Kategorie unter **Kategorien** mit
-> „In der Prognose ausklammern“ markieren. Kreditraten zählen nur mit, wenn sie als Fixkosten angelegt sind (siehe [Kredite](#13-kredite)).
+> „In der Prognose ausklammern“ markieren. Kreditraten zählen nur mit, wenn sie als Fixkosten angelegt sind (siehe [Kredite](#14-kredite)).
 
 ### Szenarien: „Was wäre, wenn …?“
 
@@ -520,7 +567,7 @@ Wählst du das Szenario aus, läuft der berechnete Durchschnitt als gestrichelte
 
 ---
 
-## 12. Kalender
+## 13. Kalender
 
 Unter **Kalender** hat jedes Familienmitglied seinen eigenen Kalender. Darin stehen alle Termine, die du selbst
 angelegt hast, und alle, zu denen dich jemand als **Teilnehmer** eingetragen hat.
@@ -593,7 +640,7 @@ für ein Geburtstagsgeschenk. Bei Terminserien gilt das Budget **je Termin**.
   Formular zum Ändern (**Abbrechen** schließt es wieder), mit dem **X** entfernst du das Budget. Ist es schon gebucht,
   bleibt es erhalten, bis die Buchung gelöscht ist.
 
-- Budgets mit Konto fließen in die **[Prognose](#11-prognose)** ein (Liste „Künftige feste Buchungen und
+- Budgets mit Konto fließen in die **[Prognose](#12-prognose)** ein (Liste „Künftige feste Buchungen und
   Kalender-Budgets“). Ohne Konto werden sie nur angezeigt.
 - Gebucht wird **nicht automatisch**. Mit **Als Ausgabe buchen** am Termin öffnet sich die Buchung mit dem geplanten
   Betrag – den kannst du vor dem Buchen noch ändern, ebenso Konto, Datum und Kategorie.
@@ -608,7 +655,7 @@ für ein Geburtstagsgeschenk. Bei Terminserien gilt das Budget **je Termin**.
 
 ---
 
-## 13. Kredite
+## 14. Kredite
 
 Unter **Kredite** verwaltest du Darlehen (Annuitäten- oder Tilgungsdarlehen) mit Zinssatz, Rate, Auszahlung und
 erster Rate.
@@ -624,7 +671,7 @@ erster Rate.
 
 ---
 
-## 14. Claude auf dem Smartphone
+## 15. Claude auf dem Smartphone
 
 Mit der **Claude-App** kannst du Einkaufsliste, Vorrat und Rezepte per Chat oder Sprache bedienen, ohne das
 Haushaltsbuch zu öffnen. Zum Beispiel:
@@ -678,7 +725,7 @@ Schaltet ein Administrator den Zugang aus, sind alle Verbindungen sofort gesperr
 
 ---
 
-## 15. Für Administratoren: Konten, Familie, Einstellungen
+## 16. Für Administratoren: Konten, Familie, Einstellungen
 
 ### Ersteinrichtung
 
@@ -717,13 +764,13 @@ Unter **Familie** legst du weitere Personen an (Name, E-Mail als Anmeldename, Pa
   API-Schlüssel von console.anthropic.com und kostet wenige Cent pro Bon. Beim Einlesen kann trotzdem jederzeit
   gewechselt werden.
 - **Prognose**: Standard-Zeitraum und aus wie vielen Monaten der Durchschnitt gebildet wird.
-- **Claude (MCP)**: Zugang für die Claude-App ein- und ausschalten, siehe [Kapitel 14](#14-claude-auf-dem-smartphone).
+- **Claude (MCP)**: Zugang für die Claude-App ein- und ausschalten, siehe [Kapitel 15](#15-claude-auf-dem-smartphone).
 
 ![Einstellungen](anleitung/einstellungen.png)
 
 ---
 
-## 16. Häufige Fragen
+## 17. Häufige Fragen
 
 **Muss ich Fixkosten jeden Monat selbst buchen?**
 Nein. Fällige Fixkosten mit „Automatisch buchen“ werden beim ersten Öffnen des Haushaltsbuchs am Tag selbst gebucht.

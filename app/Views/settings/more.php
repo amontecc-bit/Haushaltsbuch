@@ -5,6 +5,8 @@
     <a href="<?= e(url('/recipes')) ?>"><i class="bi bi-journal-richtext"></i>Rezepte</a>
     <a href="<?= e(url('/recipes/suggestions')) ?>"><i class="bi bi-lightbulb"></i>Rezeptvorschläge</a>
     <a href="<?= e(url('/recurring')) ?>"><i class="bi bi-arrow-repeat"></i>Fixkosten</a>
+    <a href="<?= e(url('/wishes')) ?>"><i class="bi bi-gift"></i>Wunschliste</a>
+    <a href="<?= e(url('/wishes/plans')) ?>"><i class="bi bi-piggy-bank"></i>Sparpläne</a>
     <a href="<?= e(url('/import')) ?>"><i class="bi bi-upload"></i>CSV-Import</a>
     <a href="<?= e(url('/reports')) ?>"><i class="bi bi-pie-chart"></i>Auswertungen</a>
     <a href="<?= e(url('/reports/items')) ?>"><i class="bi bi-receipt"></i>Einzelposten</a>

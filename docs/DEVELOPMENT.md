@@ -30,6 +30,7 @@ Ergänzt `CLAUDE.md` um Details, die man beim Ändern einzelner Bereiche braucht
 | `calendar_participants` / `calendar_exceptions` | Teilnehmer (Ersteller immer dabei) bzw. gelöschte Einzeltermine einer Serie |
 | `calendar_budgets` / `calendar_budget_bookings` | Budget je Termin **und Teilnehmer** (`amount` positiv, `account_id` = Planungskonto für die Prognose); Buchung je Vorkommen mit `transaction_id` (FK `ON DELETE CASCADE` → Buchung löschen öffnet das Budget wieder) |
 | `calendar_templates` | persönliche Vorlagen je Benutzer: Dauer, Vor-/Nachlauf, ganztägig, Farbe, optional Budget-Vorschlag |
+| `wishes` | Wunschliste (011): `title`, `description`, `image_path` (relativ zu `storage/uploads`, `wishes/{id}-{zufall}.ext`, Auslieferung nur über `/wishes/{id}/image`), `price`, `occasion`, `for_user_id`, `wanted_by`, `status` open/fulfilled; virtueller Sparplan `plan_amount` (Monatsrate, NULL = keiner), `plan_start` (erste Rate), `plan_saved` (Stand am Start), `plan_recurring_id` (Posten), `plan_account_id` (Konto, auf dem das Ersparte liegt) |
 
 Saldo eines Kontos = `opening_balance + SUM(transactions.amount bis Stichtag)`.
 
@@ -74,6 +75,16 @@ aus dem CSV-Import (Gegenbuchung mit umgekehrtem Betrag auf anderem Prognose-Kon
 Umbuchung noch Fixkosten) – sonst zählt z. B. eine Fixkosten-Umbuchung doppelt. `ForecastService::run()` liefert
 dazu `breakdown` je Konto (Hauptkategorien + nicht gezählte Beträge) für die Ansicht. Kreditraten fließen nur ein, wenn sie als
 Fixkosten angelegt sind (Button auf der Kreditseite).
+
+**Wunschliste / Sparpläne** (`WishController`, `WishService`): Gebucht wird nichts. Erspartes = `plan_saved` + Rate je
+Monatstermin ab `plan_start` (Tag des Starts, Monatsende geklemmt, erste Rate am Starttag), höchstens bis zum Preis; danach
+läuft der Plan nicht mehr (`running = false`) und belastet seinen Posten nicht. Beim Bearbeiten wird der Plan auf heute
+umgestellt (aktueller Stand + nächste Rate), die Rechnung bleibt gleich. Konto des Ersparten = Einnahmeseite des Postens
+(`incomeAccountId()`: Zielkonto einer Umbuchung, Konto einer Einnahme, Konto des Gegeneintrags einer Ausgabe; sonst frei
+wählbar). Auslastung je Posten: Summe der Raten laufender Pläne gegen den Monatsbetrag des Postens (pausiert/beendet = 0)
+→ `over`. Deckung: je Konto die Wünsche nach Wunschtermin/Zieldatum sortiert aus dem heutigen Saldo bedienen
+(`allocate()`). Die Vorschau im Formular (`public/assets/js/wishes.js`) rechnet dasselbe im Browser. Der Fixkosten-Editor
+nimmt `?return=/wishes…` als Rücksprungziel an.
 
 **Fixkosten ↔ Buchungen:** `transactions.recurring_id` kennzeichnet eine Buchung als Fixkosten (Liste, Filter
 „Fixkosten“) und nimmt sie aus dem variablen Ø der Prognose. `RecurrenceService::linkExisting()` ordnet vorhandene

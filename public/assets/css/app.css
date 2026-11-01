@@ -284,3 +284,11 @@ body.guest { display: flex; align-items: center; justify-content: center; min-he
 .cal-timeline .cal-lead .cal-bar, .cal-timeline .cal-trail .cal-bar { border: 1px dashed var(--c);
     background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--c) 35%, transparent) 0 .2rem, transparent .2rem .4rem); }
 .cal-timeline .cal-lead, .cal-timeline .cal-trail { color: var(--bs-secondary-color); font-style: italic; }
+
+/* Wunschliste */
+.wish-img { height: 180px; object-fit: cover; }
+.wish-img-empty { display: flex; align-items: center; justify-content: center; font-size: 3rem; color: var(--bs-secondary-color); background: var(--bs-tertiary-bg); }
+.wish-img-large { max-height: 420px; object-fit: contain; background: var(--bs-tertiary-bg); }
+.wish-thumb { max-height: 96px; max-width: 160px; object-fit: cover; }
+.table-card > :not(caption) > tr > :first-child { padding-left: 1rem; }
+.table-card > :not(caption) > tr > :last-child { padding-right: 1rem; }

@@ -10,6 +10,7 @@ Haushaltsbuch-Web-App für eine Familie: Konten, Buchungen, Fixkosten, CSV-Impor
 (Hand/PDF/Kassenbon-Foto, lokale OCR oder Claude API), Einkaufslisten aus virtuellen Posten, Vorrat mit automatischer
 Einkaufsliste, Rezepte mit Vorschlägen nach Vorrat, Kategorisierung mit Lernen, Auswertungen, Prognose, Kredite,
 Kalender je Mitglied (Vor-/Nachlauf, Teilnehmer, Vorlagen, Budgets je Termin → Prognose, Buchen per Knopf),
+Wunschliste mit Bild und virtuellem Sparplan je Posten (Warnung bei Überschreitung, Deckung durch Kontostand),
 MCP-Server mit OAuth für die Claude-App (nur Einkaufsliste, Vorrat, Rezepte, Posten-Pflege, Kalender, Bargeld-Buchung – keine Finanzdaten).
 **UI-Sprache und Code-Kommentare: Deutsch.** Bezeichner (Klassen, Methoden, Spalten) Englisch.
 
@@ -70,6 +71,7 @@ Header `X-CSRF-Token`); `HB.post()` in `public/assets/js/app.js` setzt den Heade
 | `InventoryService` | Vorrat je virtuellem Posten in Referenzeinheiten: Einheiten (`toRef`), Faktor aus dem Produktnamen (`guessFactor`), Chargen je Einkauf (`syncPurchase`, stabil über purchase_id+product_id), FIFO-Verbrauch, Korrektur, `refreshAutoList()` (Liste „Automatisch“) |
 | `RecipeService` | Rezept gegen Vorrat (`evaluate`, Portionen skaliert, Grundvorrat), Sortierung der Vorschläge (`rank`); DB-Teil gemeinsam für Web und MCP: `ingredientRows` (Zutaten prüfen/anlegen), `cook`, `addMissingToList`, `evaluateAll`, `card` |
 | `CalendarService` | Kalender: `occurrences()` (Wiederholung, Clamping, Ausnahmen), `instance()`/`segments()` (Vor-/Nachlauf tageweise, Ende exklusiv), `columns()`/`dayLayout()` (Zeitraster Tag/Woche 0–24 Uhr scrollbar: gleichzeitige Termine nebeneinander, Vor-/Nachlauf in der Spalte des Termins; Partial `calendar/timegrid.php`), `moveChanges()`/`move()` (Ziehen im Raster → `POST /calendar/{id}/move`; Serie ganz verschieben inkl. Ausnahmen/Buchungsdaten oder ein Vorkommen als eigenen Termin ablösen; JS `calTimegrid()` in `calendar.js`), `parseDuration()`, `applyTemplate()`, `buildEvent()` (Prüfung für Web und MCP), `forUser()`, `save()`, `bookBudget()` (`source = 'calendar'`); Rechte: ändern nur Ersteller/Admin, Budget nur der Teilnehmer selbst |
+| `WishService` | Wunschliste: virtueller Sparplan (`plan()` Stand/Zieldatum/nötige Rate für Wunschtermin, `schedule()`), Monatstermine wie Fixkosten geklemmt; `incomeAccountId()` (Konto der Einnahmeseite eines Postens), `usage()` (Summe der Raten je Posten → `over`), `allocate()` (Deckung des Ersparten durch den Kontostand, dringendste zuerst). Ansichten `/wishes`, `/wishes/plans` (Sparpläne nach Posten); Fixkosten-Editor kennt `?return=/wishes…` |
 | `Mcp\McpServer` / `Mcp\McpTools` + `Mcp\ItemTools` + `Mcp\CalendarTools` | MCP-Protokoll (JSON-RPC, zustandslos, reine Klasse) bzw. die 30 Tools für Claude (+2 Budget-Tools nur mit persönlicher Freigabe `user_preferences.mcp_calendar_budgets`; Basis `Mcp\ToolSet`; `ItemTools` = virtuelle Posten, Produkt-Zuordnung, `merge_items`; `CalendarTools` = Termine, Vorlagen, Budgets). **Keine Finanzdaten** ausgeben (keine Preise, Geschäfte, Einkäufe, Salden, Umsätze); einzige Ausnahmen `book_cash_expense` und `book_event_budget` (nur `cash`-Konten mit Buchungsrecht, ≤ 5.000 €, Antwort ohne Saldo). Fachfehler als `ToolError`, Änderungen nach `mcp_log` |
 | `OAuthService` | OAuth 2.1 für den MCP-Server: PKCE S256, erlaubte Rückruf-Hosts (claude.ai/claude.com/localhost), Bearer/Basic aus dem Header, Tokens nur gehasht; Abläufe im `OAuthController` |
 | `Migrator` | führt `database/migrations/*.sql` aus (auch automatisch beim ersten Seitenaufruf/Setup) |
@@ -127,7 +129,7 @@ Header `X-CSRF-Token`); `HB.post()` in `public/assets/js/app.js` setzt den Heade
 
 ## Status / mögliche nächste Schritte
 
-Alle geplanten Module sind umgesetzt und getestet (153 PHPUnit-Tests; Browser-Durchlauf Foto → lokale OCR → Speichern;
+Alle geplanten Module sind umgesetzt und getestet (164 PHPUnit-Tests; Browser-Durchlauf Foto → lokale OCR → Speichern;
 MCP/OAuth Ende-zu-Ende gegen eine DB-Kopie).
 Noch nicht real getestet: Kamera auf echtem Smartphone (braucht HTTPS), KI-Erkennung mit echtem API-Schlüssel,
 MCP-Konnektor mit echter Claude-App (braucht HTTPS-Server).
@@ -136,5 +138,5 @@ Playwright/Chromium (Linux) erzeugt – `uebersicht*.png` und `prognose.png` zei
 noch nicht, `kalender-woche.png` noch die alte Wochenansicht ohne Zeitraster, `kalender-termin.png` noch die alte Budgetkarte ohne Stift/X (bei Gelegenheit mit `bin/screenshots.py` neu erzeugen).
 Navigation: `$back` erscheint auch am Desktop als Pfeil links neben der Überschrift; der Kalender merkt sich die
 zuletzt genutzte Ansicht in der Sitzung (`calendar_view`), Zurück-Links laufen über `CalendarController::calendarUrl()`.
-Ideen: Erinnerungen/ICS-Export für Termine, Budgets je Kategorie mit Warnung, Sparziele, Bearbeiten von CSV-Profilen in der Oberfläche,
+Ideen: Erinnerungen/ICS-Export für Termine, Budgets je Kategorie mit Warnung, Wunschliste über MCP (ohne Beträge), Bearbeiten von CSV-Profilen in der Oberfläche,
 Konten-Export/Backup, E-Mail-Einladung für Familienmitglieder, Zwei-Faktor-Login.
