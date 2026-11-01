@@ -73,6 +73,41 @@ final class CalendarRepository extends Repository
         $this->exec('INSERT IGNORE INTO calendar_exceptions (event_id, occurrence_date) VALUES (?, ?)', [$eventId, $date]);
     }
 
+    /**
+     * Ausnahmen und gebuchte Budgets einer Serie um $days Tage verschieben (Serie wurde verschoben).
+     * Reihenfolge so, dass der eindeutige Schlüssel unterwegs nicht kollidiert.
+     */
+    public function shiftOccurrenceDates(int $eventId, int $days): void
+    {
+        if ($days === 0) {
+            return;
+        }
+        $order = $days > 0 ? 'DESC' : 'ASC';
+        $this->exec("UPDATE calendar_exceptions SET occurrence_date = DATE_ADD(occurrence_date, INTERVAL ? DAY)
+                     WHERE event_id = ? ORDER BY occurrence_date $order", [$days, $eventId]);
+        $this->exec("UPDATE calendar_budget_bookings SET occurrence_date = DATE_ADD(occurrence_date, INTERVAL ? DAY)
+                     WHERE budget_id IN (SELECT id FROM calendar_budgets WHERE event_id = ?) ORDER BY occurrence_date $order", [$days, $eventId]);
+    }
+
+    /** Gebuchte Budgets eines Vorkommens auf ein anderes Datum (und ggf. die Budgets eines anderen Termins) umhängen */
+    public function moveBookings(int $eventId, string $fromDate, string $toDate, ?int $toEventId = null): void
+    {
+        foreach ($this->many(
+            'SELECT k.id, b.user_id FROM calendar_budget_bookings k JOIN calendar_budgets b ON b.id = k.budget_id
+             WHERE b.event_id = ? AND k.occurrence_date = ?', [$eventId, $fromDate]) as $r) {
+            $budgetId = $toEventId ? $this->value('SELECT id FROM calendar_budgets WHERE event_id = ? AND user_id = ?', [$toEventId, $r['user_id']]) : null;
+            $this->exec('UPDATE calendar_budget_bookings SET occurrence_date = ?' . ($budgetId ? ', budget_id = ' . (int) $budgetId : '') . ' WHERE id = ?',
+                [$toDate, $r['id']]);
+        }
+    }
+
+    /** Budgets aller Teilnehmer auf einen anderen Termin kopieren (abgelöstes Vorkommen einer Serie) */
+    public function copyBudgets(int $fromEventId, int $toEventId): void
+    {
+        $this->exec('INSERT INTO calendar_budgets (event_id, user_id, amount, account_id, category_id, note)
+                     SELECT ?, user_id, amount, account_id, category_id, note FROM calendar_budgets WHERE event_id = ?', [$toEventId, $fromEventId]);
+    }
+
     // ---- Teilnehmer ------------------------------------------------------------------------
 
     /** @param int[] $ids @return array<int, array<int, array{id:int, name:string}>> */

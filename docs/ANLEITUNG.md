@@ -536,7 +536,18 @@ angelegt hast, und alle, zu denen dich jemand als **Teilnehmer** eingetragen hat
 - In **Tag** und **Woche** stehen die Termine auf einer Zeitleiste: Ein Termin ist **so hoch, wie er dauert**, Vor- und
   Nachlauf schließen direkt darüber bzw. darunter an. Termine, die sich **überschneiden**, stehen **nebeneinander** –
   so siehst du sofort, wo es eng wird. Ganztägige Termine stehen in einer eigenen Zeile oben, die rote Linie ist „jetzt“.
-  Ein Klick in eine freie Stunde legt dort einen neuen Termin an.
+  Ein Klick in eine freie Stunde legt dort einen neuen Termin an. Die Zeitleiste umfasst den ganzen Tag (0–24 Uhr) und
+  lässt sich scrollen; beim Öffnen steht sie auf 7 Uhr bzw. kurz vor dem ersten Termin.
+- **Termine mit der Maus ändern** (nur eigene Termine, die samt Vor-/Nachlauf an einem Tag liegen):
+  - **Ziehen am Termin** verschiebt ihn im 15-Minuten-Raster – Vor- und Nachlauf wandern mit. In der Woche geht das auch
+    auf einen anderen Tag. Ein einfacher Klick öffnet weiterhin die Details.
+  - Die **Griffe** am oberen und unteren Rand (erscheinen beim Überfahren) ändern **Beginn** bzw. **Ende**.
+  - Vorlauf und Nachlauf haben eigene Griffe (oben am Vorlauf, unten am Nachlauf), mit denen du sie im
+    5-Minuten-Raster **verlängerst oder verkürzt**.
+  - Beim Ziehen zeigt ein Schild die neue Zeit; **Esc** bricht ab. Bei einer **Terminserie** fragt der Kalender, ob nur
+    dieser Termin (er wird dann zu einem eigenen Termin, Teilnehmer und Budgets bleiben) oder die ganze Serie
+    geändert werden soll.
+  - Auf dem Handy den Termin **kurz gedrückt halten** und dann ziehen; kurzes Wischen scrollt wie gewohnt.
 - Im **Monat** öffnet ein Klick auf die Tageszahl (oder in der Woche auf den Wochentag) die Tagesansicht; das **+**, das
   beim Überfahren eines Tages erscheint, legt dort einen neuen Termin an. Ein Klick auf einen Termin öffnet seine Details.
 - Von den Details, den Vorlagen und den Formularen führt der Pfeil **‹** links neben der Überschrift (bzw. oben in der

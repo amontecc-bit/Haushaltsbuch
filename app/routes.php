@@ -164,6 +164,7 @@ $router->get('/calendar/{id}', [CalendarController::class, 'show']);
 $router->get('/calendar/{id}/edit', [CalendarController::class, 'edit']);
 $router->post('/calendar/{id}', [CalendarController::class, 'update']);
 $router->post('/calendar/{id}/delete', [CalendarController::class, 'delete']);
+$router->post('/calendar/{id}/move', [CalendarController::class, 'move']);
 $router->post('/calendar/{id}/budget', [CalendarController::class, 'budget']);
 $router->get('/calendar/{id}/book', [CalendarController::class, 'bookForm']);
 $router->post('/calendar/{id}/book', [CalendarController::class, 'book']);
